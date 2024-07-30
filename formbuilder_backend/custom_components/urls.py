@@ -78,9 +78,9 @@ urlpatterns = [
     # added by Raji END
 
     # added by Raji BGN for OCR Components
-    path('AadharcardExtractionView/', AadharcardExtractionView.as_view(), name='AadharcardExtractionView'),
-    path('PancardExtractionView/', PancardExtractionView.as_view(), name='PancardExtractionView'),
-    path('OCRExtractionView/', OCRExtractionView.as_view(), name='OCRExtractionView'),
+    # path('AadharcardExtractionView/', AadharcardExtractionView.as_view(), name='AadharcardExtractionView'),
+    # path('PancardExtractionView/', PancardExtractionView.as_view(), name='PancardExtractionView'),
+    # path('OCRExtractionView/', OCRExtractionView.as_view(), name='OCRExtractionView'),
     # added by Raji END for OCR Components
     # added by Raji BGN for DMS components
     path('FileUploadView/',FileUploadView.as_view(),name='FileUploadView'),
