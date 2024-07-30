@@ -2075,277 +2075,277 @@ class UserLoginView(generics.GenericAPIView):
 
 ######################### API for OCR Components Starts ###################################
 
-class PancardExtractionSetting:
+# class PancardExtractionSetting:
 
-    @staticmethod
-    def detect_objects_on_image(image, obj_det=None):
-        model_path = os.path.join(settings.BASE_DIR, 'static/pancard_model/New_result_08_07_24/weights/best.pt')
-        model = YOLO(model_path)
-        results = model.predict(image)
-        result = results[0]
-        output = []
-        for box in result.boxes:
-            x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-            class_id = box.cls[0].item()
-            prob = round(box.conf[0].item(), 2)
-            if obj_det is None or obj_det == result.names[class_id]:
-                output.append([x1, y1, x2, y2, result.names[class_id], prob])
-        logger.info(f"Object detection completed on image with {len(output)} objects.")
-        return output
+#     @staticmethod
+#     def detect_objects_on_image(image, obj_det=None):
+#         model_path = os.path.join(settings.BASE_DIR, 'static/pancard_model/New_result_08_07_24/weights/best.pt')
+#         model = YOLO(model_path)
+#         results = model.predict(image)
+#         result = results[0]
+#         output = []
+#         for box in result.boxes:
+#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
+#             class_id = box.cls[0].item()
+#             prob = round(box.conf[0].item(), 2)
+#             if obj_det is None or obj_det == result.names[class_id]:
+#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
+#         logger.info(f"Object detection completed on image with {len(output)} objects.")
+#         return output
 
-    @staticmethod
-    def draw_boxes(image, boxes):
-        draw = ImageDraw.Draw(image)
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-            text = f"{label} {prob:.2f}"
-            draw.text((x1, y1 - 10), text, fill="red")
-        logger.info("Bounding boxes drawn on image.")
-        return image
+#     @staticmethod
+#     def draw_boxes(image, boxes):
+#         draw = ImageDraw.Draw(image)
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+#             text = f"{label} {prob:.2f}"
+#             draw.text((x1, y1 - 10), text, fill="red")
+#         logger.info("Bounding boxes drawn on image.")
+#         return image
 
-    @staticmethod
-    # def crop_and_extract_text(image, boxes):
-    #     reader = easyocr.Reader(['en'])
-    #     extracted_texts = {}
-    #     for box in boxes:
-    #         x1, y1, x2, y2, label, prob = box
-    #         cropped_image = image.crop((x1, y1, x2, y2))
-    #         cropped_image = cropped_image.convert('RGB')
-    #         img_array = np.array(cropped_image)
-    #         try:
-    #             text = reader.readtext(img_array, detail=0, paragraph=True)
-    #             extracted_text = " ".join(text).strip()
-    #             if label in extracted_texts:
-    #                 extracted_texts[label] += " " + extracted_text
-    #             else:
-    #                 extracted_texts[label] = extracted_text
-    #         except Exception as e:
-    #             logger.error(f"Error extracting text from box: {str(e)}")
-    #             return {"error": str(e)}
-    #     logger.info("Text extraction completed.")
+#     @staticmethod
+#     # def crop_and_extract_text(image, boxes):
+#     #     reader = easyocr.Reader(['en'])
+#     #     extracted_texts = {}
+#     #     for box in boxes:
+#     #         x1, y1, x2, y2, label, prob = box
+#     #         cropped_image = image.crop((x1, y1, x2, y2))
+#     #         cropped_image = cropped_image.convert('RGB')
+#     #         img_array = np.array(cropped_image)
+#     #         try:
+#     #             text = reader.readtext(img_array, detail=0, paragraph=True)
+#     #             extracted_text = " ".join(text).strip()
+#     #             if label in extracted_texts:
+#     #                 extracted_texts[label] += " " + extracted_text
+#     #             else:
+#     #                 extracted_texts[label] = extracted_text
+#     #         except Exception as e:
+#     #             logger.error(f"Error extracting text from box: {str(e)}")
+#     #             return {"error": str(e)}
+#     #     logger.info("Text extraction completed.")
 
-    #     return extracted_texts
-    @staticmethod
-    def crop_and_extract_text(image, boxes):
-        reader = easyocr.Reader(['en'])
-        extracted_texts = {}
-        field_mappings = {
-            "IT": "",
-            "IT_emblem": "",  # Assuming you want to remove this field
-            "panHolder_Name": "Name",
-            "panHolder_photo": "",  # Assuming you want to remove this field
-            "panHolder_Number": "Number",
-            "panHolder_CO": "Father name",
-            "panHolder_Signature": "",  # Assuming you want to remove this field
-            "panHolder_DOB": "DOB"
-        }
+#     #     return extracted_texts
+#     @staticmethod
+#     def crop_and_extract_text(image, boxes):
+#         reader = easyocr.Reader(['en'])
+#         extracted_texts = {}
+#         field_mappings = {
+#             "IT": "",
+#             "IT_emblem": "",  # Assuming you want to remove this field
+#             "panHolder_Name": "Name",
+#             "panHolder_photo": "",  # Assuming you want to remove this field
+#             "panHolder_Number": "Number",
+#             "panHolder_CO": "Father name",
+#             "panHolder_Signature": "",  # Assuming you want to remove this field
+#             "panHolder_DOB": "DOB"
+#         }
 
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            cropped_image = image.crop((x1, y1, x2, y2))
-            cropped_image = cropped_image.convert('RGB')
-            img_array = np.array(cropped_image)
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             cropped_image = image.crop((x1, y1, x2, y2))
+#             cropped_image = cropped_image.convert('RGB')
+#             img_array = np.array(cropped_image)
 
-            try:
-                text = reader.readtext(img_array, detail=0, paragraph=True)
-                extracted_text = " ".join(text).strip()
+#             try:
+#                 text = reader.readtext(img_array, detail=0, paragraph=True)
+#                 extracted_text = " ".join(text).strip()
 
-                # Map label to desired field name and add to extracted_texts
-                if label in field_mappings and field_mappings[label]:
-                    field_name = field_mappings[label]
-                    if field_name in extracted_texts:
-                        extracted_texts[field_name] += " " + extracted_text
-                    else:
-                        extracted_texts[field_name] = extracted_text
+#                 # Map label to desired field name and add to extracted_texts
+#                 if label in field_mappings and field_mappings[label]:
+#                     field_name = field_mappings[label]
+#                     if field_name in extracted_texts:
+#                         extracted_texts[field_name] += " " + extracted_text
+#                     else:
+#                         extracted_texts[field_name] = extracted_text
 
-            except Exception as e:
-                logger.error(f"Error extracting text from box: {str(e)}")
-                return {"error": str(e)}
+#             except Exception as e:
+#                 logger.error(f"Error extracting text from box: {str(e)}")
+#                 return {"error": str(e)}
 
-        logger.info("Text extraction completed.")
-        return extracted_texts
-
-
-class PancardExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                image = Image.open(file)
-                detected_objects = PancardExtractionSetting.detect_objects_on_image(image)
-                image_with_boxes = PancardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-                extracted_texts = PancardExtractionSetting.crop_and_extract_text(image, detected_objects)
-                all_extracted_texts[file.name] = extracted_texts
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
-
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
-        logger.info("succesfully extracted: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
+#         logger.info("Text extraction completed.")
+#         return extracted_texts
 
 
-class AadharcardExtractionSetting:
+# class PancardExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
 
-    @staticmethod
-    def detect_objects_on_image(image, obj_det=None):
-        model_path = os.path.join(settings.BASE_DIR, 'static/aadharcard_model/weights/best.pt')
-        model = YOLO(model_path)
-        results = model.predict(image)
-        result = results[0]
-        output = []
-        for box in result.boxes:
-            x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-            class_id = box.cls[0].item()
-            prob = round(box.conf[0].item(), 2)
-            if obj_det is None or obj_det == result.names[class_id]:
-                output.append([x1, y1, x2, y2, result.names[class_id], prob])
-        logger.info(f"Object detection completed on image with {len(output)} objects.")
-        return output
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-    @staticmethod
-    def draw_boxes(image, boxes):
-        draw = ImageDraw.Draw(image)
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-            text = f"{label} {prob:.2f}"
-            draw.text((x1, y1 - 10), text, fill="red")
-        logger.info("Bounding boxes drawn on image.")
-        return image
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 image = Image.open(file)
+#                 detected_objects = PancardExtractionSetting.detect_objects_on_image(image)
+#                 image_with_boxes = PancardExtractionSetting.draw_boxes(image.copy(), detected_objects)
+#                 extracted_texts = PancardExtractionSetting.crop_and_extract_text(image, detected_objects)
+#                 all_extracted_texts[file.name] = extracted_texts
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
 
-    @staticmethod
-    def crop_and_extract_text(image, boxes):
-        reader = easyocr.Reader(['en'])
-        extracted_texts = {}
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            cropped_image = image.crop((x1, y1, x2, y2))
-            cropped_image = cropped_image.convert('RGB')
-            img_array = np.array(cropped_image)
-            try:
-                text = reader.readtext(img_array, detail=0, paragraph=True)
-                extracted_text = " ".join(text).strip()
-                if label in extracted_texts:
-                    extracted_texts[label] += " " + extracted_text
-                else:
-                    extracted_texts[label] = extracted_text
-            except Exception as e:
-                logger.error(f"Error extracting text from box: {str(e)}")
-                return {"error": str(e)}
-        logger.info("Text extraction completed.")
-        return extracted_texts
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+#         logger.info("succesfully extracted: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
 
 
-class AadharcardExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
+# class AadharcardExtractionSetting:
 
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+#     @staticmethod
+#     def detect_objects_on_image(image, obj_det=None):
+#         model_path = os.path.join(settings.BASE_DIR, 'static/aadharcard_model/weights/best.pt')
+#         model = YOLO(model_path)
+#         results = model.predict(image)
+#         result = results[0]
+#         output = []
+#         for box in result.boxes:
+#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
+#             class_id = box.cls[0].item()
+#             prob = round(box.conf[0].item(), 2)
+#             if obj_det is None or obj_det == result.names[class_id]:
+#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
+#         logger.info(f"Object detection completed on image with {len(output)} objects.")
+#         return output
 
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                image = Image.open(file)
-                detected_objects = AadharcardExtractionSetting.detect_objects_on_image(image)
-                image_with_boxes = AadharcardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-                extracted_texts = AadharcardExtractionSetting.crop_and_extract_text(image, detected_objects)
-                all_extracted_texts[file.name] = extracted_texts
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
+#     @staticmethod
+#     def draw_boxes(image, boxes):
+#         draw = ImageDraw.Draw(image)
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+#             text = f"{label} {prob:.2f}"
+#             draw.text((x1, y1 - 10), text, fill="red")
+#         logger.info("Bounding boxes drawn on image.")
+#         return image
 
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
-        logger.info("successfully extracted: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
-
-
-class OCRExtractionSetting:
-    @staticmethod
-    def extract_text(input_file_name):
-        logger.info(f"Starting text extraction from {input_file_name}")
-        reader = PdfReader(input_file_name)
-        number_of_pages = len(reader.pages)
-        all_text = []
-
-        for i in range(number_of_pages):
-            page = reader.pages[i]
-            text = page.extract_text()
-            all_text.append(text)
-            if text:
-                logger.info(f"Text extracted from page {i}")
-            else:
-                logger.warning(f"No text found on page {i}")
-
-        return all_text
-
-    @staticmethod
-    def editable_pdf(input_file_name, output_file_name):
-        if os.path.isfile(input_file_name):
-            logger.info(f"Creating editable PDF: {output_file_name}")
-            ocrmypdf.ocr(input_file_name, output_file_name, skip_text=True)
-            if os.path.isfile(output_file_name):
-                logger.info(f"Editable PDF created: {output_file_name}")
-            else:
-                logger.error(f"Failed to create editable PDF: {output_file_name}")
-        else:
-            logger.error(f"Input file not found: {input_file_name}")
-
-        return output_file_name
+#     @staticmethod
+#     def crop_and_extract_text(image, boxes):
+#         reader = easyocr.Reader(['en'])
+#         extracted_texts = {}
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             cropped_image = image.crop((x1, y1, x2, y2))
+#             cropped_image = cropped_image.convert('RGB')
+#             img_array = np.array(cropped_image)
+#             try:
+#                 text = reader.readtext(img_array, detail=0, paragraph=True)
+#                 extracted_text = " ".join(text).strip()
+#                 if label in extracted_texts:
+#                     extracted_texts[label] += " " + extracted_text
+#                 else:
+#                     extracted_texts[label] = extracted_text
+#             except Exception as e:
+#                 logger.error(f"Error extracting text from box: {str(e)}")
+#                 return {"error": str(e)}
+#         logger.info("Text extraction completed.")
+#         return extracted_texts
 
 
-class OCRExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
+# class AadharcardExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
 
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                # Save the uploaded file to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                    for chunk in file.chunks():
-                        temp_file.write(chunk)
-                    input_file_name = temp_file.name
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 image = Image.open(file)
+#                 detected_objects = AadharcardExtractionSetting.detect_objects_on_image(image)
+#                 image_with_boxes = AadharcardExtractionSetting.draw_boxes(image.copy(), detected_objects)
+#                 extracted_texts = AadharcardExtractionSetting.crop_and_extract_text(image, detected_objects)
+#                 all_extracted_texts[file.name] = extracted_texts
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
 
-                output_file_name = f"{os.path.splitext(input_file_name)[0]}_output.pdf"
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+#         logger.info("successfully extracted: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
 
-                text = OCRExtractionSetting.extract_text(input_file_name)
-                if not text:
-                    logger.info(f"No text found in {input_file_name}, converting to editable PDF.")
-                    edit_file_name = OCRExtractionSetting.editable_pdf(input_file_name, output_file_name)
-                    text = OCRExtractionSetting.extract_text(edit_file_name)
 
-                all_extracted_texts[file.name] = text
-                logger.info(f"Text successfully extracted from {file.name}")
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
-            finally:
-                if os.path.exists(input_file_name):
-                    os.remove(input_file_name)
-                if os.path.exists(output_file_name):
-                    os.remove(output_file_name)
+# class OCRExtractionSetting:
+#     @staticmethod
+#     def extract_text(input_file_name):
+#         logger.info(f"Starting text extraction from {input_file_name}")
+#         reader = PdfReader(input_file_name)
+#         number_of_pages = len(reader.pages)
+#         all_text = []
 
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
+#         for i in range(number_of_pages):
+#             page = reader.pages[i]
+#             text = page.extract_text()
+#             all_text.append(text)
+#             if text:
+#                 logger.info(f"Text extracted from page {i}")
+#             else:
+#                 logger.warning(f"No text found on page {i}")
 
-        logger.info(f"Extraction completed successfully: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
+#         return all_text
+
+#     @staticmethod
+#     def editable_pdf(input_file_name, output_file_name):
+#         if os.path.isfile(input_file_name):
+#             logger.info(f"Creating editable PDF: {output_file_name}")
+#             ocrmypdf.ocr(input_file_name, output_file_name, skip_text=True)
+#             if os.path.isfile(output_file_name):
+#                 logger.info(f"Editable PDF created: {output_file_name}")
+#             else:
+#                 logger.error(f"Failed to create editable PDF: {output_file_name}")
+#         else:
+#             logger.error(f"Input file not found: {input_file_name}")
+
+#         return output_file_name
+
+
+# class OCRExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
+
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 # Save the uploaded file to a temporary file
+#                 with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+#                     for chunk in file.chunks():
+#                         temp_file.write(chunk)
+#                     input_file_name = temp_file.name
+
+#                 output_file_name = f"{os.path.splitext(input_file_name)[0]}_output.pdf"
+
+#                 text = OCRExtractionSetting.extract_text(input_file_name)
+#                 if not text:
+#                     logger.info(f"No text found in {input_file_name}, converting to editable PDF.")
+#                     edit_file_name = OCRExtractionSetting.editable_pdf(input_file_name, output_file_name)
+#                     text = OCRExtractionSetting.extract_text(edit_file_name)
+
+#                 all_extracted_texts[file.name] = text
+#                 logger.info(f"Text successfully extracted from {file.name}")
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
+#             finally:
+#                 if os.path.exists(input_file_name):
+#                     os.remove(input_file_name)
+#                 if os.path.exists(output_file_name):
+#                     os.remove(output_file_name)
+
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+
+#         logger.info(f"Extraction completed successfully: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
 
 
 ######################### API for OCR Components Ends ###################################
