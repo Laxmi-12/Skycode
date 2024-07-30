@@ -609,10 +609,10 @@ class DmsDataListView(generics.ListAPIView):
 class DMSAPIView(APIView):
     def post(self, request, *args, **kwargs):
         # Extract filename from request data
-        file = request.FILES.get('file')
+        filename = request.data.get('filename')
         organization_id = request.data.get('organization_id')
 
-        if not file:
+        if not filename:
             return Response({"error": "Filename not provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not organization_id:
@@ -631,23 +631,31 @@ class DMSAPIView(APIView):
 
         # Prepare data to send to the external API
         data = {
-            # 'filename': filename,
+            'filename': filename,
             'drive_types': drive_types,
             'config_details_schema': config_details_schema
         }
         print("data",data)
 
         # Send the filename and additional data to another API
-        self.send_filename_to_api(file,data)
+        self.send_filename_to_api(data)
 
         return Response({"message": "Filename and details sent to API."}, status=status.HTTP_200_OK)
 
-    def send_filename_to_api(self,file,data):
+    def send_filename_to_api(self,data):
         external_api_url = 'http://192.168.225.18:8000/custom_components/FileDownloadView/'
-        # response = requests.post(external_api_url, json=data)
-        # Prepare files and data for the request
-        files = {'file': (file.name, file, file.content_type)}
-        response = requests.post(external_api_url, data=data, files=files)
+        # Separate config_details_schema from the other data
+        # Prepare the data for the request
+        data_to_send = {
+            'filename': data['filename'],
+            'drive_types': data['drive_types'],
+            'config_details_schema': json.dumps(data['config_details_schema'])  # JSON stringify the config details
+        }
+
+        response = requests.post(
+            external_api_url,
+            data=data_to_send
+        )
         if response.status_code != 200:
             raise Exception(f"Failed to send data to external API: {response.text}")
 
@@ -2685,7 +2693,8 @@ class FileDownloadView(APIView):
 
         drive_type = request.data.get('drive_types')
         print("drive_type",drive_type)
-
+        data = request.data
+        print("data",data)
         if drive_type == "S3 Bucket":
             bucket_name = request.data.get('bucket_name')
             aws_access_key_id = request.data.get('aws_access_key_id')
@@ -2695,7 +2704,7 @@ class FileDownloadView(APIView):
                 logger.error("Incomplete S3 credentials")
                 return Response({"error": "Incomplete S3 credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-            file_name = request.data.get('file_name')
+            file_name = request.data.get('filename')
             if not file_name:
                 logger.error("No file_name provided")
                 return Response({"error": "No file_name provided"}, status=status.HTTP_400_BAD_REQUEST)
@@ -2714,7 +2723,8 @@ class FileDownloadView(APIView):
                 logger.error("Incomplete Google Drive upload data")
                 return Response({"error": "Incomplete Google Drive upload data"}, status=status.HTTP_400_BAD_REQUEST)
 
-            file_name = request.data.get('file_name')
+            file_name = request.data.get('filename')
+            print("file_name",file_name)
             if not file_name:
                 logger.error("No file_name provided")
                 return Response({"error": "No file_name provided"}, status=status.HTTP_400_BAD_REQUEST)
