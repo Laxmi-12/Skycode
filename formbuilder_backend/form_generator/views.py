@@ -3,14 +3,16 @@ author : mohan
 app_name : form_generator
 """
 import threading
+from sqlite3 import IntegrityError
 
 import requests
 from django.db import transaction
 from django.urls import reverse
+from django.utils.crypto import get_random_string
 
 from .serializer import *
 from rest_framework.response import Response
-from rest_framework.decorators import api_view  # function based api_view decorator
+from rest_framework.decorators import api_view, authentication_classes  # function based api_view decorator
 from rest_framework.views import APIView  # class based APIView
 from rest_framework import status  # status codes
 from django.core.mail import send_mail  # mail service
@@ -41,7 +43,7 @@ from rest_framework.authtoken.models import Token  # login_authentication
 from django.contrib.auth.mixins import LoginRequiredMixin  # login required decorator
 
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 from datetime import datetime, date, time, timedelta  # add date in created date and eta date comparison
 from django.shortcuts import get_object_or_404
@@ -59,6 +61,7 @@ from custom_components.models import Bot, BotSchema, BotData, Integration, Integ
 from custom_components.serializer import IntegrationDetailsSerializer, BotDataSerializer, OrganizationSerializer, \
     OcrSerializer, Ocr_DetailsSerializer, DmsDataSerializer
 import json
+
 import operator
 from rest_framework import generics, status
 
@@ -72,6 +75,18 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import UserData
+from .serializer import UserDataSerializer
+from django.contrib.auth.tokens import default_token_generator
+
+from django.contrib.sites.shortcuts import get_current_site
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 
 logger = logging.getLogger(__name__)
 
@@ -303,7 +318,7 @@ class UserFilledDataView(APIView):
                     files = {'files': (file.name, file.file, file.content_type)}
 
                     print("inside file")
-                    external_api_url = 'http://192.168.0.107:8000/custom_components/FileUploadView/'
+                    external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
                     response = requests.post(
                         external_api_url,
                         data=configurations, files=files
@@ -574,7 +589,7 @@ class CreateProcessView(APIView):
             # target_form_name = id_based_form_record.first_step  # Initial form
             process_data = id_based_form_record.participants  # get overall json form data
             process_id = id_based_form_record.pk
-            print("process_id",process_id)
+            print("process_id", process_id)
             # Load JSON data
             # parsed_data = json.loads(process_data)
             # Get the first key in the executionFlow dictionary
@@ -633,7 +648,7 @@ class CreateProcessView(APIView):
                         print("configurations", configurations)
                         print("inside file")
                         files = {'files': (file.name, file.file, file.content_type)}
-                        external_api_url = 'http://192.168.0.107:8000/custom_components/FileUploadView/'
+                        external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
                         response = requests.post(
                             external_api_url,
                             data=configurations, files=files
@@ -778,7 +793,6 @@ class CreateProcessView(APIView):
                             # 4. Save the Dms_data instance to update the record in the database
                             dms_data.save()
 
-
                             # Verify the updated next_step
                             updated_case = Case.objects.get(pk=case_instance.pk)
                             print("Updated next_step:", updated_case.next_step)
@@ -793,7 +807,6 @@ class CreateProcessView(APIView):
                             submitted_form_queryset = FilledFormData.objects.filter(pk=instance.pk)
                             print('submitted_form_queryset---1', submitted_form_queryset)
 
-
                             # Update the attributes of the retrieved object
                             submitted_form_queryset.update(caseId=get_case_id, status="Completed")
 
@@ -805,12 +818,11 @@ class CreateProcessView(APIView):
                             get_form_schema_id = submitted_form_instance.formId
                             print('get_form_schema_id--3', get_form_schema_id)
 
-                            #Update the case id in DMS
-
+                            # Update the case id in DMS
 
                             print('+++++++++++++++++++++++ END 2+++++++++++++++++++++++++')
 
-                            trigger_url = f"http://192.168.0.107:8000/process_related_cases/{get_case_id}/"
+                            trigger_url = f"http://192.168.0.106:8000/process_related_cases/{get_case_id}/"
                             payload = {'case_id': get_case_id}  # Adjust the payload as needed
 
                             try:
@@ -833,7 +845,6 @@ class CreateProcessView(APIView):
                             # Trigger the get_case_related_forms URL after returning the case_id
                             response = Response({'id': case_instance.pk}, status=status.HTTP_201_CREATED)
                             return response
-
 
             return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1329,7 +1340,7 @@ class CaseRelatedFormView(APIView):
 
                         url = settings.BASE_URL + reverse('screen_scraping')
                         response = requests.post(url, json=payload_json_bytes)
-                        print("response",response)
+                        print("response", response)
 
                         if response.status_code == 200:
                             response_json = response.json()
@@ -1471,15 +1482,15 @@ class CaseRelatedFormView(APIView):
                             }
 
                             url = settings.BASE_URL + reverse('api_integration')
-                            print("url",url)
+                            print("url", url)
                             payload = input_data_dict
 
                             payload_json_bytes = json.dumps(payload)
-                            print("payload_json_bytes",payload_json_bytes)
+                            print("payload_json_bytes", payload_json_bytes)
 
                             # print("payload_json_bytes##############################", response)
                             response = requests.post(url, data=payload_json_bytes)  # api call
-                            print("response",response)
+                            print("response", response)
                             if response.status_code == 200:
                                 # responses.append(response.json())  # Store the response
                                 response_json = response.json()
@@ -1602,7 +1613,7 @@ class CaseRelatedFormView(APIView):
                                 print("configurations", configurations)
                                 files = {'files': (file.name, file.file, file.content_type)}
                                 print("inside file")
-                                external_api_url = 'http://192.168.0.107:8000/custom_components/FileUploadView/'
+                                external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
                                 response = requests.post(external_api_url, data=configurations, files=files)
 
                                 print("response", response)
@@ -1621,11 +1632,25 @@ class CaseRelatedFormView(APIView):
                                         # Handle the case where the organization does not exist
                                         organization_instance = None
                                     try:
+                                        dms_instance = Dms.objects.get(id=organization_id)
+                                    except Organization.DoesNotExist:
+                                        # Handle the case where the organization does not exist
+                                        organization_instance = None
+                                    # Check if there are any Dms entries
+                                    if dms_entries.exists():
+                                        # Get the first Dms instance from the queryset
+                                        dms_instance = dms_entries.first()
+                                        dms_id = dms_instance.id  # Retrieve the Dms ID
+                                    else:
+                                        dms_instance = None
+                                        print("No Dms entries found for the given organization_id.")
+                                    try:
                                         dms_data, created = Dms_data.objects.get_or_create(
                                             folder_id=file_id,
                                             filename=file_name,
                                             case_id=case,
                                             flow_id=process_data,
+                                            dms=dms_instance,
 
                                             organization=organization_instance,
                                             defaults={'meta_data': configurations['metadata']}
@@ -2206,21 +2231,144 @@ class CoreDataFilledForm(APIView):
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+################################################# Create User Starts ##################################################
+
+# class CreateUserView(APIView):
+#     def post(self, request):
+#         serializer = UserinfoSerializer(data=request.data)
+#         if serializer.is_valid():
+#             user = serializer.save()
+#
+#             # Generate a password reset token and link
+#             reset_token = get_random_string(32)
+#             reset_link = reverse('password-reset', kwargs={'token': reset_token})
+#             full_link = f"{request.scheme}://{request.get_host()}{reset_link}"
+#
+#             # Optionally, store the reset token in a user profile or separate model
+#             # Assuming you have a profile model with a reset_token field
+#             user.profile.reset_token = reset_token
+#             user.profile.save()
+#
+#             # Send the reset email
+#             send_mail(
+#                 'Password Reset Link',
+#                 f'Please click the link below to set your password:\n\n{full_link}',
+#                 'from@example.com',  # Change to your email
+#                 [user.email],
+#                 fail_silently=False,
+#             )
+#
+#             return Response({'message': 'User created successfully. Password reset link has been sent.'}, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+from rest_framework.permissions import BasePermission
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
+
+
+
+@authentication_classes([TokenAuthentication])
+class UserCreateView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure only admin users can access this view
+
+    def get(self, request, user_id=None):
+        if user_id:
+            user_data = get_object_or_404(UserData, id=user_id)
+            serializer = UserDataSerializer(user_data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            user_data = UserData.objects.all()
+            serializer = UserDataSerializer(user_data, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, format=None):
+        # Check if the request user is a superadmin
+        user = request.user
+        print("user",user)
+        if not request.user.is_superuser:
+            return Response({"error": "You do not have permission to perform this action."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        serializer = UserDataSerializer(data=request.data)
+        if serializer.is_valid():
+            # Check if email already exists
+            mail_id = serializer.validated_data.get('mail_id')
+            print("mail_id",mail_id)
+            if UserData.objects.filter(mail_id=mail_id).exists():
+                return Response({"error": "Email address already in use."}, status=status.HTTP_400_BAD_REQUEST)
+
+            user_data = serializer.save()
+
+            try:
+                # Ensure a corresponding User is created
+                user = User.objects.create_user(
+                    username=user_data.user_name,
+                    email=user_data.mail_id,
+                    password='temporary_password'  # Set a temporary password or handle as needed
+                )
+            except IntegrityError as e:
+                logger.error(f"User creation failed due to unique constraint: {str(e)}")
+                return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Link the UserData with the created User
+            user_data.user_id = user.id
+            user_data.save()
+
+            self.send_password_reset_email(user, request)
+            return Response({'status': 'User created and reset email sent'}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, user_id):
+        user_data = get_object_or_404(UserData, id=user_id)
+        serializer = UserDataSerializer(user_data, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
+        user_data = get_object_or_404(UserData, id=user_id)
+        user.delete()
+        user_data.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def send_password_reset_email(self, user, request):
+        try:
+            token_generator = PasswordResetTokenGenerator()
+            token = token_generator.make_token(user)
+            print("token",token)
+            reset_url = reverse('password_reset_confirm', kwargs={'user_id': user.id, 'token': token})
+            reset_link = request.build_absolute_uri(reset_url)
+            subject = 'Password Reset'
+            body = f'Here is your password reset link: {reset_link}'
+
+            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email])
+
+            logger.info(f"Password reset email sent to {user.email}")
+            return Response({"message": "Password reset email sent successfully."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error sending password reset email: {str(e)}")
+            return Response({"error": "An error occurred while sending the email."},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+################################################# Create User Ends ##################################################
 class LoginView(APIView):
-    def post(self, request):
+    def post(self, request, format=None):
         username = request.data.get('username')
         password = request.data.get('password')
 
-        user = authenticate(request, username=username, password=password)  # authenticate the user
+        # Authenticate the user
+        user = authenticate(username=username, password=password)
+
         if user is not None:
-            login(request, user)
+            # Check if a token already exists
             token, created = Token.objects.get_or_create(user=user)
-            userdata = UserData.objects.get(username=user)
-            userdata_role = userdata.role
-            return Response({'token': token.key, 'user_id': user.id, 'username': user.username, 'role': userdata_role},
-                            status=status.HTTP_200_OK)
+            return Response({"token": token.key}, status=status.HTTP_200_OK)
         else:
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 # ............... SLA with Cron bgn .............
@@ -2302,122 +2450,6 @@ def sla_email():
 
 
 ######################################## User Create function starts ###################################
-
-class UserDataListCreateView(generics.ListCreateAPIView):
-    serializer_class = UserInfoSerializer
-
-    def create(self, request, *args, **kwargs):
-        try:
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            # organization = serializer.save()
-
-            # Create or retrieve regular user
-            user_email = request.data.get('mail_id')
-            usergroup_id = request.data.get('usergroup')
-
-            if usergroup_id:
-                try:
-                    usergroup = UserGroup.objects.get(id=usergroup_id)
-                except UserGroup.DoesNotExist:
-                    return Response({'error': 'UserGroup not found'}, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                usergroup = None
-            organization_id = self.kwargs['organization_id']
-            print("organization", organization_id)
-            organization = Organization.objects.get(id=organization_id)
-            if user_email:
-                logger.debug("Creating or retrieving user...")  # Debugging line
-                user, created = User.objects.get_or_create(email=user_email)
-                logger.debug("User object:", user)
-                logger.debug("Created:", created)
-
-                if created:
-                    # Generate a unique username if needed
-                    base_username = user_email.split('@')[0]
-                    username = base_username
-                    counter = 1
-
-                    # Ensure username is unique
-                    while User.objects.filter(username=username).exists():
-                        username = f"{base_username}{counter}"
-                        counter += 1
-
-                    user.username = username
-                    user.set_unusable_password()  # Ensures the user must set a password
-                    user.save()
-                    logger.info(f"User created with email: {user_email}")
-                else:
-                    logger.info(f"User already exists with email: {user_email}")
-
-                # Create or update UserData with user_id
-                user_data, created = UserData.objects.get_or_create(mail_id=user_email)
-                user_data.user_id = user.id  # Assuming user_id is a field in UserData to store User's ID
-                user_data.usergroup = usergroup  # Assign role as needed
-                user_data.organization = organization  # Assign organization
-                user_data.save()
-
-                # Send password reset email to the user's email address
-                self.send_password_reset_email(user_data)
-
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.error(f"Error creating user: {str(e)}")
-            return Response({"error": "Failed to create user"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def send_password_reset_email(self, user_data):
-        try:
-            user_id = user_data.user_id  # Assuming user_id is a field in UserData
-            user = User.objects.get(id=user_id)
-
-            token_generator = PasswordResetTokenGenerator()
-            token = token_generator.make_token(user)
-            # Constructing reset URL
-            reset_url = reverse('password_reset_confirm', kwargs={'user_id': user_id, 'token': token})
-            reset_link = self.request.build_absolute_uri(reset_url)
-            subject = 'Password Reset'
-            body = f'Hi {user},Here is your password reset link: {reset_link}'
-
-            send_mail(subject, body, settings.EMAIL_HOST_USER, [user.email])
-
-            logger.info(f"Password reset email sent to {user.email}")
-        except User.DoesNotExist:
-            logger.error(f"User with ID {user_id} does not exist.")
-        except Exception as e:
-            logger.error(f"Error sending password reset email: {str(e)}")
-
-
-class UserDataUpdateView(generics.RetrieveUpdateAPIView):
-    """
-    User Update functionality
-    """
-    queryset = UserData.objects.all()
-    serializer_class = UserInfoSerializer
-
-    def get_queryset(self):
-        organization_id = self.kwargs['organization_id']
-        try:
-            return UserData.objects.filter(organization_id=organization_id)
-        except Exception as e:
-            logger.error(f"Error retrieving users for organization {organization_id}: {e}")
-            raise
-
-    def get(self, request, *args, **kwargs):
-        try:
-            return self.retrieve(request, *args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error retrieving user {kwargs['pk']} for organization {kwargs['organization_id']}: {e}")
-            return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def put(self, request, *args, **kwargs):
-        try:
-            return self.update(request, *args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error updating user {kwargs['pk']} for organization {kwargs['organization_id']}: {e}")
-            return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # -- Cron Bgn --

@@ -15,7 +15,7 @@ SECRET_KEY = 'django-insecure-_zw7k@8s@nj%f+7n@_uobzuqwg1hc9_@*ayid=k&aee-0_ysw3
 # secret key used in production secret!
 
 # live url
-BASE_URL = 'http://192.168.0.107:8000'
+BASE_URL = 'http://192.168.225.18:8000'
 # BASE_URL = 'http://192.168.1.6:8000'
 # BASE_URL = 'http://192.168.1.9:8000'
 
@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'rest_framework',     # added by mohan
     'corsheaders',        # added by mohan
     'rest_framework.authtoken',
+
 ]
 
 MIDDLEWARE = [
@@ -63,7 +64,7 @@ REST_FRAMEWORK = {  # added by mohan
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
     ],
 }
 

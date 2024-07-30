@@ -2,10 +2,12 @@ from django.http.multipartparser import MultiPartParser
 from django.shortcuts import get_object_or_404, get_list_or_404
 from django.urls import reverse
 from django.conf import settings
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework.parsers import FormParser
 
 from .models import Bot, BotSchema, Integration, IntegrationDetails, Organization, UserGroup, Permission, Ocr, Dms, \
-    Dashboard
+    Dashboard,Dms_data
 from form_generator.models import CreateProcess, FormDataInfo, Rule, Case, UserData, FormPermission
 from form_generator.serializer import CreateProcessSerializer, FormDataInfoSerializer, RuleSerializer, \
     FilledDataInfoSerializer, UserLoginSerializer, CreateProcessResponseSerializer
@@ -19,7 +21,7 @@ from rest_framework.generics import RetrieveUpdateAPIView
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import APIException
-# Import for Components BGN --
+# Import for Components BGN --Fo
 
 # Google_drive bot imports BGN
 import os
@@ -100,6 +102,7 @@ from googleapiclient.errors import HttpError
 from oauth2client.file import Storage
 from google.auth.transport.requests import Request
 from selenium.webdriver.chrome.service import Service as ChromeService
+
 """----------------------OneDrive-----------------------"""
 from msal import ConfidentialClientApplication, SerializableTokenCache
 
@@ -563,7 +566,102 @@ class DmsRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         organization_id = self.kwargs['organization_id']
         return Dms.objects.filter(organization_id=organization_id)
 
+class DmsDataListView(generics.ListAPIView):
+    queryset = Dms_data.objects.all()
+    serializer_class = DmsDataSerializer
 
+
+# def send_filename_to_api(dms_data_id):
+#     try:
+#         # Retrieve the Dms_data instance
+#         dms_data = Dms_data.objects.get(id=dms_data_id)
+#         print("dms_data",dms_data)
+#         filename = dms_data.filename
+#         print("filename", filename)
+#
+#
+#         if filename is None:
+#             raise ValueError("Filename is not set for the given Dms_data instance.")
+#
+#         # Prepare the data to send
+#         data = {'filename': filename}
+#
+#         # Define the target API URL
+#         target_api_url = 'http://192.168.0.106:8000/FileDownloadView/'
+#
+#         # Send the POST request
+#         response = requests.post(target_api_url, json=data)
+#
+#         # Check the response
+#         response.raise_for_status()  # Raise an exception for HTTP errors
+#         print("Filename sent successfully!")
+#
+#     except Dms_data.DoesNotExist:
+#         print("Dms_data instance not found.")
+#
+#     except ValueError as ve:
+#         print(f"ValueError: {ve}")
+#
+#     except requests.RequestException as re:
+#         print(f"RequestException: {re}")
+
+
+class DMSAPIView(APIView):
+    def post(self, request, *args, **kwargs):
+        # Extract filename from request data
+        file = request.FILES.get('file')
+        organization_id = request.data.get('organization_id')
+
+        if not file:
+            return Response({"error": "Filename not provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not organization_id:
+            return Response({"error": "Organization ID not provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch the Dms instance associated with the given organization ID
+        try:
+            dms_instance = Dms.objects.get(organization_id=organization_id)
+        except Dms.DoesNotExist:
+            return Response({"error": "DMS entry not found for the given organization."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Get the additional details from the Dms instance
+        drive_types = dms_instance.drive_types
+        config_details_schema = dms_instance.config_details_schema
+
+        # Prepare data to send to the external API
+        data = {
+            # 'filename': filename,
+            'drive_types': drive_types,
+            'config_details_schema': config_details_schema
+        }
+        print("data",data)
+
+        # Send the filename and additional data to another API
+        self.send_filename_to_api(file,data)
+
+        return Response({"message": "Filename and details sent to API."}, status=status.HTTP_200_OK)
+
+    def send_filename_to_api(self,file,data):
+        external_api_url = 'http://192.168.225.18:8000/custom_components/FileDownloadView/'
+        # response = requests.post(external_api_url, json=data)
+        # Prepare files and data for the request
+        files = {'file': (file.name, file, file.content_type)}
+        response = requests.post(external_api_url, data=data, files=files)
+        if response.status_code != 200:
+            raise Exception(f"Failed to send data to external API: {response.text}")
+
+    # def post(self, request, *args, **kwargs):
+    #     # Extract filename from request data
+    #     filename = request.data.get('filename')
+    #
+    #     if filename is None:
+    #         return Response({"error": "Filename not provided."}, status=status.HTTP_400_BAD_REQUEST)
+    #
+    #     # Send the filename to another API
+    #     send_filename_to_api(filename)
+    #
+    #     return Response({"message": "Filename sent to API."}, status=status.HTTP_200_OK)
 # API to create DMS Ends #####################################
 
 
@@ -579,7 +677,7 @@ class ProcessBuilder(APIView):
         # Extract participants
         participants = request.data.get("participants")
         data = request.data
-        print("data",data)
+        print("data", data)
 
         try:
             process = CreateProcess.objects.get(id=process_id)
@@ -1159,7 +1257,7 @@ class AutomationSetting:
         get_element_result = None
         print("##############Set up the WebDriver, navigate to the login URL, and fill the forms.")
         try:
-            print("____________________form_status ",form_status)
+            print("____________________form_status ", form_status)
             print("____________________url ", form_status)
             AutomationSetting.initialize_driver(form_status)
             AutomationSetting.navigate_to(url, form_status)
@@ -1372,13 +1470,14 @@ class AutomationSetting:
 class AutomationView(APIView):
     """This class handles sending the Requests to automate form submissions using Selenium WebDriver"""
     print("(((((((((((((((((((((((((((((((((((((((((((((")
+
     def post(self, request):
         logger.info("Received a new request in AutomationView")
         print("************************************")
         try:
             print(type(request.data))
             data = json.loads(request.data)
-            print("data",data.get('schema_config'))
+            print("data", data.get('schema_config'))
             schema_config = data.get('schema_config', [])
             print("schema_config====================", schema_config)
             input_data = data.get("input_data", {})
@@ -1518,7 +1617,7 @@ class APISetting:
     @staticmethod
     def make_request(input_data, schema_config, process_status, max_retries=3):
         logger.info("Starting request process.")
-        print("input_data-----???????????????????????????",input_data)
+        print("input_data-----???????????????????????????", input_data)
         print("schema_config----------???????????????????????????", schema_config)
         basic_url = schema_config['basic_url']
         endpoint_template = schema_config['end_point']
@@ -1530,7 +1629,7 @@ class APISetting:
         request_data = schema_config['request']
         response_data = schema_config['response']
         all_responses = []
-        print("request_data+++++++++++++++++++++++++++++++",request_data)
+        print("request_data+++++++++++++++++++++++++++++++", request_data)
         process_status = "started"  # Update status to started
 
         try:
@@ -1764,7 +1863,7 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
                 # print("userrrrrrrrrrrrrrr",user.email)
 
                 # Create or update UserData with user_id
-                user_data, created = UserData.objects.get_or_create(username=super_admin_email)
+                user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email,user_name = username)
                 user_data.user_id = user.id  # Assuming user_id is a field in UserData to store User's ID
                 user_data.role = 'Admin'  # Assign role as needed
                 user_data.organization = organization  # Assign organization
@@ -1808,28 +1907,8 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
             return Response({"error": "Failed to send password reset email."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def send_password_reset_email(self, user_data):
-        try:
-            user_id = user_data.user_id  # Assuming user_id is a field in UserData
-            user = User.objects.get(id=user_id)
 
-            token_generator = PasswordResetTokenGenerator()
-            token = token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk)).decode()
 
-            # Constructing reset URL
-            reset_url = reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-            reset_link = self.request.build_absolute_uri(reset_url)
-            subject = 'Password Reset'
-            body = f'Here is your password reset link: {reset_link}'
-
-            send_mail(subject, body, settings.EMAIL_HOST_USER, [user.email])
-
-            logger.info(f"Password reset email sent to {user.email}")
-        except User.DoesNotExist:
-            logger.error(f"User with ID {user_id} does not exist.")
-        except Exception as e:
-            logger.error(f"Error sending password reset email: {str(e)}")
     def list(self, request, *args, **kwargs):
         try:
             queryset = self.get_queryset()
@@ -2029,45 +2108,47 @@ class PasswordResetConfirmView(generics.UpdateAPIView):
 
 ########################## Login function starts ###########################################
 
-@method_decorator(csrf_exempt, name='dispatch')
-class UserLoginView(generics.GenericAPIView):
-    serializer_class = UserLoginSerializer
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        username = serializer.validated_data['username']
-        password = serializer.validated_data['password']
-
-        logger.debug(f"Attempting to authenticate user: {username}")
-
-        user = authenticate(username=username, password=password)
-        logger.debug(f"Authenticated user: {user}")
-
-        if user is not None:
-            if user.is_active:
-                try:
-                    user_data = UserData.objects.get(username=user.email)
-                except UserData.DoesNotExist:
-                    logger.error(f"User data not found for username: {username}")
-                    return Response({"error": "User data not found"}, status=status.HTTP_404_NOT_FOUND)
-
-                token, created = Token.objects.get_or_create(user=user)
-
-                response_data = {
-                    "username": user.username,
-                    "role": user_data.role,
-                    "token": token.key,
-                }
-
-                logger.info(f"User {username} logged in successfully.")
-                return Response(response_data, status=status.HTTP_200_OK)
-            else:
-                logger.error(f"Inactive user attempted to log in: {username}")
-                return Response({"error": "User account is inactive"}, status=status.HTTP_401_UNAUTHORIZED)
-        else:
-            logger.error(f"Failed login attempt for username: {username}")
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+# @method_decorator(csrf_exempt, name='dispatch')
+# class UserLoginView(generics.GenericAPIView):
+#     serializer_class = UserLoginSerializer
+#
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         username = serializer.validated_data['username']
+#         print("username",username)
+#         password = serializer.validated_data['password']
+#         print("password", password)
+#
+#         logger.debug(f"Attempting to authenticate user: {username}")
+#
+#         user = authenticate(username=username, password=password)
+#         logger.debug(f"Authenticated user: {user}")
+#
+#         if user is not None:
+#             if user.is_active:
+#                 try:
+#                     user_data = UserData.objects.get(username=user.email)
+#                 except UserData.DoesNotExist:
+#                     logger.error(f"User data not found for username: {username}")
+#                     return Response({"error": "User data not found"}, status=status.HTTP_404_NOT_FOUND)
+#
+#                 token, created = Token.objects.get_or_create(user=user)
+#
+#                 response_data = {
+#                     "username": user.username,
+#                     "role": user_data.role,
+#                     "token": token.key,
+#                 }
+#
+#                 logger.info(f"User {username} logged in successfully.")
+#                 return Response(response_data, status=status.HTTP_200_OK)
+#             else:
+#                 logger.error(f"Inactive user attempted to log in: {username}")
+#                 return Response({"error": "User account is inactive"}, status=status.HTTP_401_UNAUTHORIZED)
+#         else:
+#             logger.error(f"Failed login attempt for username: {username}")
+#             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 ########################## Login function ends ##########################################
@@ -2075,277 +2156,277 @@ class UserLoginView(generics.GenericAPIView):
 
 ######################### API for OCR Components Starts ###################################
 
-class PancardExtractionSetting:
-
-    @staticmethod
-    def detect_objects_on_image(image, obj_det=None):
-        model_path = os.path.join(settings.BASE_DIR, 'static/pancard_model/New_result_08_07_24/weights/best.pt')
-        model = YOLO(model_path)
-        results = model.predict(image)
-        result = results[0]
-        output = []
-        for box in result.boxes:
-            x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-            class_id = box.cls[0].item()
-            prob = round(box.conf[0].item(), 2)
-            if obj_det is None or obj_det == result.names[class_id]:
-                output.append([x1, y1, x2, y2, result.names[class_id], prob])
-        logger.info(f"Object detection completed on image with {len(output)} objects.")
-        return output
-
-    @staticmethod
-    def draw_boxes(image, boxes):
-        draw = ImageDraw.Draw(image)
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-            text = f"{label} {prob:.2f}"
-            draw.text((x1, y1 - 10), text, fill="red")
-        logger.info("Bounding boxes drawn on image.")
-        return image
-
-    @staticmethod
-    # def crop_and_extract_text(image, boxes):
-    #     reader = easyocr.Reader(['en'])
-    #     extracted_texts = {}
-    #     for box in boxes:
-    #         x1, y1, x2, y2, label, prob = box
-    #         cropped_image = image.crop((x1, y1, x2, y2))
-    #         cropped_image = cropped_image.convert('RGB')
-    #         img_array = np.array(cropped_image)
-    #         try:
-    #             text = reader.readtext(img_array, detail=0, paragraph=True)
-    #             extracted_text = " ".join(text).strip()
-    #             if label in extracted_texts:
-    #                 extracted_texts[label] += " " + extracted_text
-    #             else:
-    #                 extracted_texts[label] = extracted_text
-    #         except Exception as e:
-    #             logger.error(f"Error extracting text from box: {str(e)}")
-    #             return {"error": str(e)}
-    #     logger.info("Text extraction completed.")
-
-    #     return extracted_texts
-    @staticmethod
-    def crop_and_extract_text(image, boxes):
-        reader = easyocr.Reader(['en'])
-        extracted_texts = {}
-        field_mappings = {
-            "IT": "",
-            "IT_emblem": "",  # Assuming you want to remove this field
-            "panHolder_Name": "Name",
-            "panHolder_photo": "",  # Assuming you want to remove this field
-            "panHolder_Number": "Number",
-            "panHolder_CO": "Father name",
-            "panHolder_Signature": "",  # Assuming you want to remove this field
-            "panHolder_DOB": "DOB"
-        }
-
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            cropped_image = image.crop((x1, y1, x2, y2))
-            cropped_image = cropped_image.convert('RGB')
-            img_array = np.array(cropped_image)
-
-            try:
-                text = reader.readtext(img_array, detail=0, paragraph=True)
-                extracted_text = " ".join(text).strip()
-
-                # Map label to desired field name and add to extracted_texts
-                if label in field_mappings and field_mappings[label]:
-                    field_name = field_mappings[label]
-                    if field_name in extracted_texts:
-                        extracted_texts[field_name] += " " + extracted_text
-                    else:
-                        extracted_texts[field_name] = extracted_text
-
-            except Exception as e:
-                logger.error(f"Error extracting text from box: {str(e)}")
-                return {"error": str(e)}
-
-        logger.info("Text extraction completed.")
-        return extracted_texts
-
-
-class PancardExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                image = Image.open(file)
-                detected_objects = PancardExtractionSetting.detect_objects_on_image(image)
-                image_with_boxes = PancardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-                extracted_texts = PancardExtractionSetting.crop_and_extract_text(image, detected_objects)
-                all_extracted_texts[file.name] = extracted_texts
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
-
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
-        logger.info("succesfully extracted: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
-
-
-class AadharcardExtractionSetting:
-
-    @staticmethod
-    def detect_objects_on_image(image, obj_det=None):
-        model_path = os.path.join(settings.BASE_DIR, 'static/aadharcard_model/weights/best.pt')
-        model = YOLO(model_path)
-        results = model.predict(image)
-        result = results[0]
-        output = []
-        for box in result.boxes:
-            x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-            class_id = box.cls[0].item()
-            prob = round(box.conf[0].item(), 2)
-            if obj_det is None or obj_det == result.names[class_id]:
-                output.append([x1, y1, x2, y2, result.names[class_id], prob])
-        logger.info(f"Object detection completed on image with {len(output)} objects.")
-        return output
-
-    @staticmethod
-    def draw_boxes(image, boxes):
-        draw = ImageDraw.Draw(image)
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-            text = f"{label} {prob:.2f}"
-            draw.text((x1, y1 - 10), text, fill="red")
-        logger.info("Bounding boxes drawn on image.")
-        return image
-
-    @staticmethod
-    def crop_and_extract_text(image, boxes):
-        reader = easyocr.Reader(['en'])
-        extracted_texts = {}
-        for box in boxes:
-            x1, y1, x2, y2, label, prob = box
-            cropped_image = image.crop((x1, y1, x2, y2))
-            cropped_image = cropped_image.convert('RGB')
-            img_array = np.array(cropped_image)
-            try:
-                text = reader.readtext(img_array, detail=0, paragraph=True)
-                extracted_text = " ".join(text).strip()
-                if label in extracted_texts:
-                    extracted_texts[label] += " " + extracted_text
-                else:
-                    extracted_texts[label] = extracted_text
-            except Exception as e:
-                logger.error(f"Error extracting text from box: {str(e)}")
-                return {"error": str(e)}
-        logger.info("Text extraction completed.")
-        return extracted_texts
-
-
-class AadharcardExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                image = Image.open(file)
-                detected_objects = AadharcardExtractionSetting.detect_objects_on_image(image)
-                image_with_boxes = AadharcardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-                extracted_texts = AadharcardExtractionSetting.crop_and_extract_text(image, detected_objects)
-                all_extracted_texts[file.name] = extracted_texts
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
-
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
-        logger.info("successfully extracted: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
-
-
-class OCRExtractionSetting:
-    @staticmethod
-    def extract_text(input_file_name):
-        logger.info(f"Starting text extraction from {input_file_name}")
-        reader = PdfReader(input_file_name)
-        number_of_pages = len(reader.pages)
-        all_text = []
-
-        for i in range(number_of_pages):
-            page = reader.pages[i]
-            text = page.extract_text()
-            all_text.append(text)
-            if text:
-                logger.info(f"Text extracted from page {i}")
-            else:
-                logger.warning(f"No text found on page {i}")
-
-        return all_text
-
-    @staticmethod
-    def editable_pdf(input_file_name, output_file_name):
-        if os.path.isfile(input_file_name):
-            logger.info(f"Creating editable PDF: {output_file_name}")
-            ocrmypdf.ocr(input_file_name, output_file_name, skip_text=True)
-            if os.path.isfile(output_file_name):
-                logger.info(f"Editable PDF created: {output_file_name}")
-            else:
-                logger.error(f"Failed to create editable PDF: {output_file_name}")
-        else:
-            logger.error(f"Input file not found: {input_file_name}")
-
-        return output_file_name
-
-
-class OCRExtractionView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, *args, **kwargs):
-        files = request.FILES.getlist('file')
-        if not files:
-            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        all_extracted_texts = {}
-        for file in files:
-            try:
-                # Save the uploaded file to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                    for chunk in file.chunks():
-                        temp_file.write(chunk)
-                    input_file_name = temp_file.name
-
-                output_file_name = f"{os.path.splitext(input_file_name)[0]}_output.pdf"
-
-                text = OCRExtractionSetting.extract_text(input_file_name)
-                if not text:
-                    logger.info(f"No text found in {input_file_name}, converting to editable PDF.")
-                    edit_file_name = OCRExtractionSetting.editable_pdf(input_file_name, output_file_name)
-                    text = OCRExtractionSetting.extract_text(edit_file_name)
-
-                all_extracted_texts[file.name] = text
-                logger.info(f"Text successfully extracted from {file.name}")
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {str(e)}")
-            finally:
-                if os.path.exists(input_file_name):
-                    os.remove(input_file_name)
-                if os.path.exists(output_file_name):
-                    os.remove(output_file_name)
-
-        response_data = {
-            "extracted_info": all_extracted_texts,
-        }
-
-        logger.info(f"Extraction completed successfully: {response_data}")
-        return Response(response_data, status=status.HTTP_200_OK)
+# class PancardExtractionSetting:
+#
+#     @staticmethod
+#     def detect_objects_on_image(image, obj_det=None):
+#         model_path = os.path.join(settings.BASE_DIR, 'static/pancard_model/New_result_08_07_24/weights/best.pt')
+#         model = YOLO(model_path)
+#         results = model.predict(image)
+#         result = results[0]
+#         output = []
+#         for box in result.boxes:
+#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
+#             class_id = box.cls[0].item()
+#             prob = round(box.conf[0].item(), 2)
+#             if obj_det is None or obj_det == result.names[class_id]:
+#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
+#         logger.info(f"Object detection completed on image with {len(output)} objects.")
+#         return output
+#
+#     @staticmethod
+#     def draw_boxes(image, boxes):
+#         draw = ImageDraw.Draw(image)
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+#             text = f"{label} {prob:.2f}"
+#             draw.text((x1, y1 - 10), text, fill="red")
+#         logger.info("Bounding boxes drawn on image.")
+#         return image
+#
+#     @staticmethod
+#     # def crop_and_extract_text(image, boxes):
+#     #     reader = easyocr.Reader(['en'])
+#     #     extracted_texts = {}
+#     #     for box in boxes:
+#     #         x1, y1, x2, y2, label, prob = box
+#     #         cropped_image = image.crop((x1, y1, x2, y2))
+#     #         cropped_image = cropped_image.convert('RGB')
+#     #         img_array = np.array(cropped_image)
+#     #         try:
+#     #             text = reader.readtext(img_array, detail=0, paragraph=True)
+#     #             extracted_text = " ".join(text).strip()
+#     #             if label in extracted_texts:
+#     #                 extracted_texts[label] += " " + extracted_text
+#     #             else:
+#     #                 extracted_texts[label] = extracted_text
+#     #         except Exception as e:
+#     #             logger.error(f"Error extracting text from box: {str(e)}")
+#     #             return {"error": str(e)}
+#     #     logger.info("Text extraction completed.")
+#
+#     #     return extracted_texts
+#     @staticmethod
+#     def crop_and_extract_text(image, boxes):
+#         reader = easyocr.Reader(['en'])
+#         extracted_texts = {}
+#         field_mappings = {
+#             "IT": "",
+#             "IT_emblem": "",  # Assuming you want to remove this field
+#             "panHolder_Name": "Name",
+#             "panHolder_photo": "",  # Assuming you want to remove this field
+#             "panHolder_Number": "Number",
+#             "panHolder_CO": "Father name",
+#             "panHolder_Signature": "",  # Assuming you want to remove this field
+#             "panHolder_DOB": "DOB"
+#         }
+#
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             cropped_image = image.crop((x1, y1, x2, y2))
+#             cropped_image = cropped_image.convert('RGB')
+#             img_array = np.array(cropped_image)
+#
+#             try:
+#                 text = reader.readtext(img_array, detail=0, paragraph=True)
+#                 extracted_text = " ".join(text).strip()
+#
+#                 # Map label to desired field name and add to extracted_texts
+#                 if label in field_mappings and field_mappings[label]:
+#                     field_name = field_mappings[label]
+#                     if field_name in extracted_texts:
+#                         extracted_texts[field_name] += " " + extracted_text
+#                     else:
+#                         extracted_texts[field_name] = extracted_text
+#
+#             except Exception as e:
+#                 logger.error(f"Error extracting text from box: {str(e)}")
+#                 return {"error": str(e)}
+#
+#         logger.info("Text extraction completed.")
+#         return extracted_texts
+#
+#
+# class PancardExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
+#
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
+#
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 image = Image.open(file)
+#                 detected_objects = PancardExtractionSetting.detect_objects_on_image(image)
+#                 image_with_boxes = PancardExtractionSetting.draw_boxes(image.copy(), detected_objects)
+#                 extracted_texts = PancardExtractionSetting.crop_and_extract_text(image, detected_objects)
+#                 all_extracted_texts[file.name] = extracted_texts
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
+#
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+#         logger.info("succesfully extracted: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
+#
+#
+# class AadharcardExtractionSetting:
+#
+#     @staticmethod
+#     def detect_objects_on_image(image, obj_det=None):
+#         model_path = os.path.join(settings.BASE_DIR, 'static/aadharcard_model/weights/best.pt')
+#         model = YOLO(model_path)
+#         results = model.predict(image)
+#         result = results[0]
+#         output = []
+#         for box in result.boxes:
+#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
+#             class_id = box.cls[0].item()
+#             prob = round(box.conf[0].item(), 2)
+#             if obj_det is None or obj_det == result.names[class_id]:
+#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
+#         logger.info(f"Object detection completed on image with {len(output)} objects.")
+#         return output
+#
+#     @staticmethod
+#     def draw_boxes(image, boxes):
+#         draw = ImageDraw.Draw(image)
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+#             text = f"{label} {prob:.2f}"
+#             draw.text((x1, y1 - 10), text, fill="red")
+#         logger.info("Bounding boxes drawn on image.")
+#         return image
+#
+#     @staticmethod
+#     def crop_and_extract_text(image, boxes):
+#         reader = easyocr.Reader(['en'])
+#         extracted_texts = {}
+#         for box in boxes:
+#             x1, y1, x2, y2, label, prob = box
+#             cropped_image = image.crop((x1, y1, x2, y2))
+#             cropped_image = cropped_image.convert('RGB')
+#             img_array = np.array(cropped_image)
+#             try:
+#                 text = reader.readtext(img_array, detail=0, paragraph=True)
+#                 extracted_text = " ".join(text).strip()
+#                 if label in extracted_texts:
+#                     extracted_texts[label] += " " + extracted_text
+#                 else:
+#                     extracted_texts[label] = extracted_text
+#             except Exception as e:
+#                 logger.error(f"Error extracting text from box: {str(e)}")
+#                 return {"error": str(e)}
+#         logger.info("Text extraction completed.")
+#         return extracted_texts
+#
+#
+# class AadharcardExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
+#
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+#
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 image = Image.open(file)
+#                 detected_objects = AadharcardExtractionSetting.detect_objects_on_image(image)
+#                 image_with_boxes = AadharcardExtractionSetting.draw_boxes(image.copy(), detected_objects)
+#                 extracted_texts = AadharcardExtractionSetting.crop_and_extract_text(image, detected_objects)
+#                 all_extracted_texts[file.name] = extracted_texts
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
+#
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+#         logger.info("successfully extracted: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
+#
+#
+# class OCRExtractionSetting:
+#     @staticmethod
+#     def extract_text(input_file_name):
+#         logger.info(f"Starting text extraction from {input_file_name}")
+#         reader = PdfReader(input_file_name)
+#         number_of_pages = len(reader.pages)
+#         all_text = []
+#
+#         for i in range(number_of_pages):
+#             page = reader.pages[i]
+#             text = page.extract_text()
+#             all_text.append(text)
+#             if text:
+#                 logger.info(f"Text extracted from page {i}")
+#             else:
+#                 logger.warning(f"No text found on page {i}")
+#
+#         return all_text
+#
+#     @staticmethod
+#     def editable_pdf(input_file_name, output_file_name):
+#         if os.path.isfile(input_file_name):
+#             logger.info(f"Creating editable PDF: {output_file_name}")
+#             ocrmypdf.ocr(input_file_name, output_file_name, skip_text=True)
+#             if os.path.isfile(output_file_name):
+#                 logger.info(f"Editable PDF created: {output_file_name}")
+#             else:
+#                 logger.error(f"Failed to create editable PDF: {output_file_name}")
+#         else:
+#             logger.error(f"Input file not found: {input_file_name}")
+#
+#         return output_file_name
+#
+#
+# class OCRExtractionView(APIView):
+#     # parser_classes = [MultiPartParser, FormParser]
+#
+#     def post(self, request, *args, **kwargs):
+#         files = request.FILES.getlist('file')
+#         if not files:
+#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+#
+#         all_extracted_texts = {}
+#         for file in files:
+#             try:
+#                 # Save the uploaded file to a temporary file
+#                 with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+#                     for chunk in file.chunks():
+#                         temp_file.write(chunk)
+#                     input_file_name = temp_file.name
+#
+#                 output_file_name = f"{os.path.splitext(input_file_name)[0]}_output.pdf"
+#
+#                 text = OCRExtractionSetting.extract_text(input_file_name)
+#                 if not text:
+#                     logger.info(f"No text found in {input_file_name}, converting to editable PDF.")
+#                     edit_file_name = OCRExtractionSetting.editable_pdf(input_file_name, output_file_name)
+#                     text = OCRExtractionSetting.extract_text(edit_file_name)
+#
+#                 all_extracted_texts[file.name] = text
+#                 logger.info(f"Text successfully extracted from {file.name}")
+#             except Exception as e:
+#                 logger.error(f"Error processing file {file.name}: {str(e)}")
+#             finally:
+#                 if os.path.exists(input_file_name):
+#                     os.remove(input_file_name)
+#                 if os.path.exists(output_file_name):
+#                     os.remove(output_file_name)
+#
+#         response_data = {
+#             "extracted_info": all_extracted_texts,
+#         }
+#
+#         logger.info(f"Extraction completed successfully: {response_data}")
+#         return Response(response_data, status=status.HTTP_200_OK)
 
 
 ######################### API for OCR Components Ends ###################################
@@ -2392,7 +2473,7 @@ class GoogleDrive(APIView):
                 q=f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder'",
                 fields="files(id, name)"
             ).execute()
-            print("results ", results )
+            print("results ", results)
             if results.get('files'):
                 folder_id = results['files'][0]['id']
                 logger.info(f"Found existing folder '{folder_name}' with ID {folder_id}.")
@@ -2427,9 +2508,9 @@ class GoogleDrive(APIView):
                 media_body=media,
                 fields='id'
             ).execute()
-            print("file",file)
+            print("file", file)
             logger.info(f'File "{modified_filename}" uploaded successfully to folder "{folder_name}".')
-            return JsonResponse({'file_name': modified_filename,'file':file,
+            return JsonResponse({'file_name': modified_filename, 'file': file,
                                  'status': f'File "{modified_filename}" uploaded successfully to Google Drive.'},
                                 status=status.HTTP_200_OK)
 
@@ -2500,7 +2581,7 @@ class S3Bucket:
     @staticmethod
     def upload_to_S3Bucket(files, aws_access_key_id, aws_secret_access_key, bucket_name, s3_bucket_metadata):
         s3_client = S3Bucket.initialize_client(aws_access_key_id, aws_secret_access_key)
-        print("s3_bucket_metadata",s3_bucket_metadata)
+        print("s3_bucket_metadata", s3_bucket_metadata)
         if not s3_client:
             return Response({'error': 'Credentials not available'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -2547,11 +2628,11 @@ class FileUploadView(APIView):
         print("data")
 
         drive_type = request.data.get('drive_types')
-        print("drive_type",drive_type)
+        print("drive_type", drive_type)
         if drive_type == "S3 Bucket":
 
             bucket_name = request.data.get('bucket_name')
-            print("bucket_name",bucket_name)
+            print("bucket_name", bucket_name)
             aws_access_key_id = request.data.get('aws_access_key_id')
             aws_secret_access_key = request.data.get('aws_secret_access_key')
             s3_bucket_metadata = json.loads(request.data.get('metadata', '{}'))
@@ -2576,7 +2657,7 @@ class FileUploadView(APIView):
             token_uri = request.data.get('token_uri')
             folder_name = request.data.get('folder_name')
             gdrive_metadata = request.data.get('metadata')
-            print("gdrive_metadata",gdrive_metadata)
+            print("gdrive_metadata", gdrive_metadata)
 
             if not (access_token and refresh_token and client_id and client_secret and token_uri and folder_name):
                 logger.error("Incomplete Google Drive upload data")
@@ -2598,13 +2679,14 @@ class FileUploadView(APIView):
 
 
 class FileDownloadView(APIView):
-    parser_classes = [MultiPartParser, FormParser]
+    # parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
 
-        drive_type = request.data.get('drive_type')
+        drive_type = request.data.get('drive_types')
+        print("drive_type",drive_type)
 
-        if drive_type == "S3Bucket":
+        if drive_type == "S3 Bucket":
             bucket_name = request.data.get('bucket_name')
             aws_access_key_id = request.data.get('aws_access_key_id')
             aws_secret_access_key = request.data.get('aws_secret_access_key')
@@ -2620,7 +2702,7 @@ class FileDownloadView(APIView):
             return S3Bucket.download_from_S3Bucket(file_name, aws_access_key_id, aws_secret_access_key, bucket_name)
 
 
-        elif drive_type == "GDrive":
+        elif drive_type == "Google Drive":
             access_token = request.data.get('access_token')
             refresh_token = request.data.get('refresh_token')
             client_id = request.data.get('client_id')

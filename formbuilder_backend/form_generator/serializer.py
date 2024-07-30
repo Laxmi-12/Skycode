@@ -8,6 +8,11 @@ import json
 from django import forms
 from .models import FormPermission
 
+from rest_framework import serializers
+from django.contrib.auth.models import User
+
+
+
 
 # To convert Json field from string to dict in serializer for API to accept the data in json format
 
@@ -63,11 +68,26 @@ class UserLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, required=True, min_length=8)
 
 
-class UserInfoSerializer(serializers.ModelSerializer):
+# class UserInfoSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = UserData
+#         fields = '__all__'
+#
+#     def create(self, validated_data):
+#         user = User.objects.create_user(
+#             username=validated_data['username'],
+#             email=validated_data['email'],
+#             password=validated_data['password']
+#         )
+#         # Set the role if you have a role field or separate model
+#         # user.role = validated_data.get('role', None)
+#         # user.save()
+#         return user
+
+class UserDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserData
-        fields = '__all__'
-
+        fields = ['user_name', 'mail_id', 'organization', 'usergroup']
 
 # adding this for process and case management :
 class CreateProcessSerializer(serializers.ModelSerializer):

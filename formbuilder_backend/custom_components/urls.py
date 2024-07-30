@@ -65,6 +65,9 @@ urlpatterns = [
     path('dms/<int:organization_id>/', DmsListCreateView.as_view(), name='dms-list-create'),
     path('dms/<int:organization_id>/<int:id>/', DmsRetrieveUpdateView.as_view(),
          name='dms-retrieve-update'),
+
+    path('api/dms-data/', DmsDataListView.as_view(), name='dms-data-detail'),
+    path('api/dms_download/', DMSAPIView.as_view(), name='send_filename'),
     # DMS URL ends
 
     # added by laxmi praba BGN
@@ -78,9 +81,9 @@ urlpatterns = [
     # added by Raji END
 
     # added by Raji BGN for OCR Components
-    path('AadharcardExtractionView/', AadharcardExtractionView.as_view(), name='AadharcardExtractionView'),
-    path('PancardExtractionView/', PancardExtractionView.as_view(), name='PancardExtractionView'),
-    path('OCRExtractionView/', OCRExtractionView.as_view(), name='OCRExtractionView'),
+    # path('AadharcardExtractionView/', AadharcardExtractionView.as_view(), name='AadharcardExtractionView'),
+    # path('PancardExtractionView/', PancardExtractionView.as_view(), name='PancardExtractionView'),
+    # path('OCRExtractionView/', OCRExtractionView.as_view(), name='OCRExtractionView'),
     # added by Raji END for OCR Components
     # added by Raji BGN for DMS components
     path('FileUploadView/',FileUploadView.as_view(),name='FileUploadView'),
@@ -118,7 +121,7 @@ urlpatterns = [
     path('password-reset/complete/', auth_views.PasswordResetCompleteView.as_view(), name='password_reset_complete'),
     # other URLs in your application
 
-    path('login/', UserLoginView.as_view(), name='user_login'),
+    # path('login/', UserLoginView.as_view(), name='user_login'),
 
 ]
 
