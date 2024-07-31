@@ -318,7 +318,7 @@ class UserFilledDataView(APIView):
                     files = {'files': (file.name, file.file, file.content_type)}
 
                     print("inside file")
-                    external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
+                    external_api_url = 'http://65.0.94.137/custom_components/FileUploadView/'
                     response = requests.post(
                         external_api_url,
                         data=configurations, files=files
@@ -648,7 +648,7 @@ class CreateProcessView(APIView):
                         print("configurations", configurations)
                         print("inside file")
                         files = {'files': (file.name, file.file, file.content_type)}
-                        external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
+                        external_api_url = 'http://65.0.94.137/custom_components/FileUploadView/'
                         response = requests.post(
                             external_api_url,
                             data=configurations, files=files
@@ -822,7 +822,7 @@ class CreateProcessView(APIView):
 
                             print('+++++++++++++++++++++++ END 2+++++++++++++++++++++++++')
 
-                            trigger_url = f"http://192.168.0.106:8000/process_related_cases/{get_case_id}/"
+                            trigger_url = f"http://65.0.94.137/process_related_cases/{get_case_id}/"
                             payload = {'case_id': get_case_id}  # Adjust the payload as needed
 
                             try:
@@ -1609,7 +1609,7 @@ class CaseRelatedFormView(APIView):
                                 print("configurations", configurations)
                                 files = {'files': (file.name, file.file, file.content_type)}
                                 print("inside file")
-                                external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
+                                external_api_url = 'http://65.0.94.137/custom_components/FileUploadView/'
                                 response = requests.post(external_api_url, data=configurations, files=files)
 
                                 print("response", response)
