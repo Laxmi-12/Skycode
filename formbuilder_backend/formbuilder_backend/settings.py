@@ -15,7 +15,7 @@ SECRET_KEY = 'django-insecure-_zw7k@8s@nj%f+7n@_uobzuqwg1hc9_@*ayid=k&aee-0_ysw3
 # secret key used in production secret!
 
 # live url
-BASE_URL = 'http://192.168.0.106:8000'
+BASE_URL = 'http://65.0.94.137'
 # BASE_URL = 'http://192.168.1.6:8000'
 # BASE_URL = 'http://192.168.1.9:8000'
 
