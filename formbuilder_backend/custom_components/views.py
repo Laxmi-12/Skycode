@@ -488,23 +488,39 @@ class OcrDetailView(generics.RetrieveUpdateDestroyAPIView):
 class DashboardListCreateView(generics.ListCreateAPIView):
     serializer_class = DashboardSerializer
 
-    # permission_classes = [IsAuthenticated]
+
 
     def get_queryset(self):
         organization_id = self.kwargs.get('organization_id')
-
+        print("organization_id",organization_id)
         return Dashboard.objects.filter(organization_id=organization_id)
 
     def perform_create(self, serializer):
         organization_id = self.kwargs.get('organization_id')
+        print("organization_id", organization_id)
         try:
-            serializer.save(organization_id=organization_id)
+            # Fetch the organization object based on organization_id
+            organization = Organization.objects.get(id=organization_id)
+            serializer.save(organization=organization)
+        except Organization.DoesNotExist:
+            raise ValidationError("The specified organization does not exist.")
         except ValidationError as e:
             logger.error(f"Validation error while creating dashboard: {e.detail}")
             raise e
         except Exception as e:
             logger.error(f"Unexpected error while creating dashboard: {e}")
             raise ValidationError("An unexpected error occurred while creating the dashboard.")
+    # def perform_create(self, serializer):
+    #     organization_id = self.kwargs.get('organization_id')
+    #     print("organization_id", organization_id)
+    #     try:
+    #         serializer.save(organization_id=organization_id)
+    #     except ValidationError as e:
+    #         logger.error(f"Validation error while creating dashboard: {e.detail}")
+    #         raise e
+    #     except Exception as e:
+    #         logger.error(f"Unexpected error while creating dashboard: {e}")
+    #         raise ValidationError("An unexpected error occurred while creating the dashboard.")
 
     def create(self, request, *args, **kwargs):
         try:
@@ -515,12 +531,30 @@ class DashboardListCreateView(generics.ListCreateAPIView):
 
 class DashboardRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DashboardSerializer
+    queryset = Dashboard.objects.all()
 
     # permission_classes = [IsAuthenticated]
 
+    # def get_queryset(self):
+    #     organization_id = self.kwargs.get('organization_id')
+    #     return Dashboard.objects.filter(organization_id=organization_id)
+
+
     def get_queryset(self):
         organization_id = self.kwargs.get('organization_id')
-        return Dashboard.objects.filter(organization_id=organization_id)
+        usergroup = self.kwargs.get('usergroup')
+        return Dashboard.objects.filter(organization_id=organization_id, usergroup=usergroup)
+
+    def get_object(self):
+        queryset = self.get_queryset()
+        filter_kwargs = {
+            'organization_id': self.kwargs.get('organization_id'),
+            'usergroup': self.kwargs.get('usergroup')
+        }
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        return obj
+
+
 
     def perform_update(self, serializer):
         try:
@@ -628,33 +662,34 @@ class DMSAPIView(APIView):
         # Get the additional details from the Dms instance
         drive_types = dms_instance.drive_types
         config_details_schema = dms_instance.config_details_schema
-
+        config_details_schema['drive_types'] = drive_types
+        config_details_schema['filename']=filename
         # Prepare data to send to the external API
-        data = {
-            'filename': filename,
-            'drive_types': drive_types,
-            'config_details_schema': config_details_schema
-        }
-        print("data",data)
+        # data = {
+        #     'filename': filename,
+        #     'drive_types': drive_types,
+        #     'config_details_schema': config_details_schema
+        # }
+        # print("data",data)
 
         # Send the filename and additional data to another API
-        self.send_filename_to_api(data)
+        self.send_filename_to_api(config_details_schema)
 
-        return Response({"message": "Filename and details sent to API."}, status=status.HTTP_200_OK)
+        return Response({"message": "Filename and details are downloaded ."}, status=status.HTTP_200_OK)
 
-    def send_filename_to_api(self,data):
-        external_api_url = 'http://192.168.225.18:8000/custom_components/FileDownloadView/'
+    def send_filename_to_api(self,config_details_schema):
+        external_api_url = 'http://192.168.0.106:8000/custom_components/FileDownloadView/'
         # Separate config_details_schema from the other data
         # Prepare the data for the request
-        data_to_send = {
-            'filename': data['filename'],
-            'drive_types': data['drive_types'],
-            'config_details_schema': json.dumps(data['config_details_schema'])  # JSON stringify the config details
-        }
+        # data_to_send = {
+        #     'filename': data['filename'],
+        #     'drive_types': data['drive_types'],
+        #     'config_details_schema': json.dumps(data['config_details_schema'])  # JSON stringify the config details
+        # }
 
         response = requests.post(
             external_api_url,
-            data=data_to_send
+            data=config_details_schema
         )
         if response.status_code != 200:
             raise Exception(f"Failed to send data to external API: {response.text}")
@@ -1768,16 +1803,28 @@ def initiate_password_reset(request):
 
 ########################## creating organization starts ##############################################
 ######################### organization based process alone starts ##################################
+# class OrganizationBasedProcess(APIView):
+#     """
+#     Organization based Process list
+#     """
+#
+#     def get(self, request, *args, **kwargs):
+#         processes = CreateProcess.objects.all()  # Adjust this as needed to filter processes
+#         serializer = CreateProcessResponseSerializer(processes, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
 class OrganizationBasedProcess(APIView):
     """
     Organization based Process list
     """
 
     def get(self, request, *args, **kwargs):
-        processes = CreateProcess.objects.all()  # Adjust this as needed to filter processes
+        organization_id = kwargs.get('organization_id')
+        if not organization_id:
+            return Response({"detail": "Organization ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        processes = CreateProcess.objects.filter(organization_id=organization_id)  # Filter by organization_id
         serializer = CreateProcessResponseSerializer(processes, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 
 class OrganizationDetailsAPIView(APIView):
     """

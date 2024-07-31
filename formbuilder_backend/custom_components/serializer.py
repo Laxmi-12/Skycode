@@ -89,13 +89,15 @@ class DashboardSerializer(serializers.ModelSerializer):
         model = Dashboard
         fields = '__all__'
 
-    def create(self, data):
-        usergroup = data.get('usergroup')
+    def create(self, validated_data):
+        usergroup = validated_data.get('usergroup')
         if Dashboard.objects.filter(usergroup=usergroup).exists():
             logger.error(f"Usergroup {usergroup.group_name} already has an assigned dashboard.")
             raise serializers.ValidationError("This usergroup already has an assigned dashboard.")
 
-        return data
+        # return data
+        # Call the parent class's create method to actually create the object
+        return super().create(validated_data)
 
 
 # class PermissionSerializer(serializers.ModelSerializer):

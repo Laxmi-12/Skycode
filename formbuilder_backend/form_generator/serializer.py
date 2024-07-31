@@ -12,8 +12,6 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 
 
-
-
 # To convert Json field from string to dict in serializer for API to accept the data in json format
 
 class JSONField(serializers.Field):
@@ -87,7 +85,8 @@ class UserLoginSerializer(serializers.Serializer):
 class UserDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserData
-        fields = ['user_name', 'mail_id', 'organization', 'usergroup']
+        fields = ['user_name', 'mail_id', 'organization', 'usergroup', 'profile_pic']
+
 
 # adding this for process and case management :
 class CreateProcessSerializer(serializers.ModelSerializer):

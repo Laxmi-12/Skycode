@@ -61,7 +61,7 @@ from custom_components.models import Bot, BotSchema, BotData, Integration, Integ
 from custom_components.serializer import IntegrationDetailsSerializer, BotDataSerializer, OrganizationSerializer, \
     OcrSerializer, Ocr_DetailsSerializer, DmsDataSerializer
 import json
-
+from django.contrib.auth.backends import ModelBackend
 import operator
 from rest_framework import generics, status
 
@@ -1008,7 +1008,7 @@ class CaseRelatedFormView(APIView):
                 ocr_names = [ocr_data.ocr.ocr_type for ocr_data in
                              ocr_data]
                 dms_data_qs = Dms_data.objects.filter(case_id=cs_id)
-                dms_names = [dms.dms.dms_data for dms in dms_data_qs if dms.dms is not None]
+                dms_names = [dms.dms.drive_types for dms in dms_data_qs if dms.dms is not None]
 
                 serialized_bot_data = BotDataSerializer(bot_data, many=True).data
                 serialized_integration_data = IntegrationDetailsSerializer(integration_data, many=True).data
@@ -1028,18 +1028,14 @@ class CaseRelatedFormView(APIView):
                 if form_schemas:
                     serializer_data = FilledDataInfoSerializer(form_schemas, many=True)
 
-                    # data_schema = {
-                    #     'form_data': serializer_data.data,
-                    #     'bot_data': serialized_bot_data,
-                    #     'integration_data': serialized_integration_data,
-                    #     'dms_data':serialized_dms_data,
-                    #     'ocr_data':serialized_ocr_data
-                    # }
-
                     response_data.update({
                         'form_schema': form_json_schema,
                         # 'data_schema': data_schema,
-                        'form_data_list': form_data_list
+                        'form_data_list': form_data_list,
+                        'bot_data': serialized_bot_data,
+                        'integration_data': serialized_integration_data,
+                        'dms_data': serialized_dms_data,
+                        'ocr_data': serialized_ocr_data
                     })
                 else:
                     return Response({'error': 'No form data found for this case'}, status=404)
@@ -2267,7 +2263,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
 
 
-
 @authentication_classes([TokenAuthentication])
 class UserCreateView(APIView):
     permission_classes = [IsAuthenticated]  # Ensure only admin users can access this view
@@ -2285,7 +2280,7 @@ class UserCreateView(APIView):
     def post(self, request, format=None):
         # Check if the request user is a superadmin
         user = request.user
-        print("user",user)
+        print("user", user)
         if not request.user.is_superuser:
             return Response({"error": "You do not have permission to perform this action."},
                             status=status.HTTP_403_FORBIDDEN)
@@ -2294,7 +2289,7 @@ class UserCreateView(APIView):
         if serializer.is_valid():
             # Check if email already exists
             mail_id = serializer.validated_data.get('mail_id')
-            print("mail_id",mail_id)
+            print("mail_id", mail_id)
             if UserData.objects.filter(mail_id=mail_id).exists():
                 return Response({"error": "Email address already in use."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2338,7 +2333,7 @@ class UserCreateView(APIView):
         try:
             token_generator = PasswordResetTokenGenerator()
             token = token_generator.make_token(user)
-            print("token",token)
+            print("token", token)
             reset_url = reverse('password_reset_confirm', kwargs={'user_id': user.id, 'token': token})
             reset_link = request.build_absolute_uri(reset_url)
             subject = 'Password Reset'
@@ -2355,20 +2350,94 @@ class UserCreateView(APIView):
 
 
 ################################################# Create User Ends ##################################################
+# class LoginView(APIView):
+#     def post(self, request, format=None):
+#         username = request.data.get('username')
+#         password = request.data.get('password')
+#
+#         # Authenticate the user
+#         user = authenticate(username=username, password=password)
+#
+#         if user is not None:
+#             # Check if a token already exists
+#             token, created = Token.objects.get_or_create(user=user)
+#             return Response({"token": token.key}, status=status.HTTP_200_OK)
+#         else:
+#             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
 class LoginView(APIView):
     def post(self, request, format=None):
-        username = request.data.get('username')
+        mail_id = request.data.get('mail_id')
         password = request.data.get('password')
 
-        # Authenticate the user
-        user = authenticate(username=username, password=password)
+        user = authenticate(request, mail_id=mail_id, password=password)
 
         if user is not None:
             # Check if a token already exists
             token, created = Token.objects.get_or_create(user=user)
-            return Response({"token": token.key}, status=status.HTTP_200_OK)
+
+            user_data = UserData.objects.get(mail_id=mail_id)
+            # Extracting usergroup data assuming it's a ForeignKey
+            usergroup = user_data.usergroup
+            usergroup_name = usergroup.group_name if usergroup else "is_super_user"  # Replace 'name' with the correct field
+
+            response_data = {
+                "user_id": user.id,
+                "usergroup": usergroup_name,
+                "token": token.key,
+                "mail_id": user_data.mail_id,
+            }
+
+            logger.info(f"User {user.id} authenticated successfully.")
+            return Response(response_data, status=status.HTTP_200_OK)
         else:
+            logger.warning(f"Authentication failed for mail_id: {mail_id}")
             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+    # def post(self, request, format=None):
+    #     mail_id = request.data.get('mail_id')
+    #     password = request.data.get('password')
+    #
+    #     # Authenticate the user using the custom backend
+    #     user = authenticate(mail_id=mail_id, password=password)
+    #     print("user",user)
+    #     if user is not None:
+    #         # Check if a token already exists
+    #         token, created = Token.objects.get_or_create(user=user)
+    #
+    #         # Prepare the response data
+    #         user_data = UserData.objects.get(user=user)
+    #         response_data = {
+    #             "user_id": user.id,
+    #             "usergroup": user_data.usergroup,  # Adjust as needed
+    #             "token": token.key,
+    #             "mail_id": user_data.mail_id,
+    #         }
+    #
+    #         logger.info(f"User {user.id} authenticated successfully.")
+    #         return Response(response_data, status=status.HTTP_200_OK)
+    #     else:
+    #         logger.warning(f"Authentication failed for mail_id: {mail_id}")
+    #         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+# class MailIDBackend(ModelBackend):
+#     def authenticate(self, request, mail_id=None, password=None, **kwargs):
+#         logger.debug(f"Attempting to authenticate user with mail_id: {mail_id}")
+#         try:
+#             user_data = UserData.objects.get(mail_id=mail_id)
+#             user = user_data.user
+#             if user.check_password(password):
+#                 logger.info(f"Authentication successful for mail_id: {mail_id}")
+#                 return user
+#             else:
+#                 logger.warning(f"Password mismatch for mail_id: {mail_id}")
+#                 return None
+#         except UserData.DoesNotExist:
+#             logger.error(f"UserData with mail_id {mail_id} does not exist")
+#             return None
+#         except Exception as e:
+#             logger.error(f"An unexpected error occurred: {e}")
+#             return None
 
 
 # ............... SLA with Cron bgn .............

@@ -80,7 +80,7 @@ class Dashboard(models.Model):
     usergroup = models.ForeignKey(UserGroup, on_delete=models.CASCADE, related_name='usergroup_dashboard', blank=True,
                                   null=True)
     dashboard_config = jsonfield.JSONField(blank=True, null=True)
-    status = models.BooleanField(blank=True, null=True)
+    # status = models.BooleanField(blank=True, null=True)
 
     def __str__(self):
         return self.name

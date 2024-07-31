@@ -88,7 +88,7 @@ class UserData(models.Model):
     user_name = models.CharField(max_length=200, blank=True)
     mail_id = models.EmailField(unique=True)
     password = models.CharField(max_length=200, blank=True)
-
+    profile_pic = models.CharField(max_length=300, blank=True)
     organization = models.ForeignKey('custom_components.Organization', on_delete=models.CASCADE,
                                      related_name='user_data', blank=True, null=True)
     usergroup = models.ForeignKey('custom_components.UserGroup', on_delete=models.CASCADE,

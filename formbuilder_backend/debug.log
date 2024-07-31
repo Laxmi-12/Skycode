@@ -1,8 +1,54 @@
-INFO 2024-07-30 21:46:42,378 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 21:46:50,825 views Invalid drive_type
-WARNING 2024-07-30 21:46:50,826 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 21:46:50,828 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 30
-ERROR 2024-07-30 21:46:50,868 log Internal Server Error: /custom_components/api/dms_download/
+INFO 2024-07-31 12:46:50,330 autoreload Watching for file changes with StatReloader
+WARNING 2024-07-31 12:46:57,796 log Unauthorized: /api/login/
+WARNING 2024-07-31 12:46:57,796 basehttp "POST /api/login/ HTTP/1.1" 401 31
+INFO 2024-07-31 12:47:17,566 basehttp "GET /admin/auth/user/ HTTP/1.1" 200 25044
+INFO 2024-07-31 12:47:17,582 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 12:47:27,029 basehttp "GET /admin/auth/user/50/change/ HTTP/1.1" 200 36197
+INFO 2024-07-31 12:47:27,055 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+WARNING 2024-07-31 12:47:43,534 log Unauthorized: /api/login/
+WARNING 2024-07-31 12:47:43,535 basehttp "POST /api/login/ HTTP/1.1" 401 31
+INFO 2024-07-31 12:48:37,750 basehttp "GET /admin/form_generator/userdata/ HTTP/1.1" 200 16399
+INFO 2024-07-31 12:48:37,768 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 12:48:38,968 basehttp "GET /admin/form_generator/userdata/29/change/ HTTP/1.1" 200 20574
+INFO 2024-07-31 12:48:38,988 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 12:48:47,728 basehttp "POST /admin/form_generator/userdata/29/change/ HTTP/1.1" 302 0
+INFO 2024-07-31 12:48:47,745 basehttp "GET /admin/form_generator/userdata/ HTTP/1.1" 200 16618
+INFO 2024-07-31 12:48:47,760 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 12:48:54,585 basehttp "POST /api/login/ HTTP/1.1" 200 136
+INFO 2024-07-31 12:49:56,181 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 12:49:57,244 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 12:50:09,753 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 12:50:10,879 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 12:50:15,587 basehttp "POST /api/login/ HTTP/1.1" 200 137
+INFO 2024-07-31 12:53:48,183 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\models.py changed, reloading.
+INFO 2024-07-31 12:53:49,277 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 12:54:49,372 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 12:55:56,248 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\serializer.py changed, reloading.
+INFO 2024-07-31 12:55:57,247 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:06:14,182 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\serializer.py changed, reloading.
+INFO 2024-07-31 13:06:15,160 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:12:56,195 basehttp "GET /admin/form_generator/createprocess/ HTTP/1.1" 200 16872
+INFO 2024-07-31 13:12:56,213 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 13:12:57,597 basehttp "GET /admin/form_generator/createprocess/46/change/ HTTP/1.1" 200 27429
+INFO 2024-07-31 13:12:57,612 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 13:14:40,719 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
+INFO 2024-07-31 13:14:42,308 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:16:16,420 basehttp "GET /custom_components/organizations/2/process_details/ HTTP/1.1" 200 249
+INFO 2024-07-31 13:16:25,920 basehttp "GET /custom_components/organizations/1/process_details/ HTTP/1.1" 200 64
+INFO 2024-07-31 13:16:33,370 basehttp "GET /custom_components/organizations/3/process_details/ HTTP/1.1" 200 2
+INFO 2024-07-31 13:27:21,677 basehttp "GET /admin/form_generator/createprocess/ HTTP/1.1" 200 16872
+INFO 2024-07-31 13:27:21,693 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 13:27:27,037 basehttp "GET /admin/form_generator/case/ HTTP/1.1" 200 22508
+INFO 2024-07-31 13:27:27,052 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 13:27:28,490 basehttp "GET /admin/form_generator/case/260/change/ HTTP/1.1" 200 24200
+INFO 2024-07-31 13:27:28,505 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+WARNING 2024-07-31 13:29:12,532 log Not Found: /cases_related_form/1/46/260/
+WARNING 2024-07-31 13:29:12,533 basehttp "GET /cases_related_form/1/46/260/ HTTP/1.1" 404 26
+INFO 2024-07-31 13:29:26,941 basehttp "GET /admin/form_generator/case/ HTTP/1.1" 200 22508
+INFO 2024-07-31 13:29:26,958 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+INFO 2024-07-31 13:29:35,077 basehttp "GET /admin/form_generator/case/260/change/ HTTP/1.1" 200 24200
+INFO 2024-07-31 13:29:35,091 basehttp "GET /admin/jsi18n/ HTTP/1.1" 200 3343
+ERROR 2024-07-31 13:29:47,290 log Internal Server Error: /cases_related_form/2/46/260/
 Traceback (most recent call last):
   File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
     response = get_response(request)
@@ -20,18 +66,21 @@ Traceback (most recent call last):
     raise exc
   File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
     response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Invalid drive_type"}
-ERROR 2024-07-30 21:46:50,871 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101708
-INFO 2024-07-30 21:48:14,424 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 21:48:15,778 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 21:48:20,834 views Invalid drive_type
-WARNING 2024-07-30 21:48:20,836 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 21:48:20,837 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 30
-ERROR 2024-07-30 21:48:20,885 log Internal Server Error: /custom_components/api/dms_download/
+  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py", line 1011, in get
+    dms_names = [dms.dms.dms_data for dms in dms_data_qs if dms.dms is not None]
+  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py", line 1011, in <listcomp>
+    dms_names = [dms.dms.dms_data for dms in dms_data_qs if dms.dms is not None]
+AttributeError: 'Dms' object has no attribute 'dms_data'
+ERROR 2024-07-31 13:29:47,292 basehttp "GET /cases_related_form/2/46/260/ HTTP/1.1" 500 101166
+INFO 2024-07-31 13:36:43,457 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:36:44,435 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:37:09,290 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:37:10,221 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:38:30,053 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:38:31,005 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:39:06,784 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:39:07,872 autoreload Watching for file changes with StatReloader
+ERROR 2024-07-31 13:39:12,180 log Internal Server Error: /cases_related_form/2/46/260/
 Traceback (most recent call last):
   File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
     response = get_response(request)
@@ -49,218 +98,17 @@ Traceback (most recent call last):
     raise exc
   File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
     response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Invalid drive_type"}
-ERROR 2024-07-30 21:48:20,889 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101708
-INFO 2024-07-30 21:48:43,895 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 21:48:45,134 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 21:48:50,596 views Incomplete Google Drive upload data
-WARNING 2024-07-30 21:48:50,597 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 21:48:50,597 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 21:48:50,645 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 21:48:50,648 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-INFO 2024-07-30 21:49:23,883 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 21:49:25,116 autoreload Watching for file changes with StatReloader
-INFO 2024-07-30 21:51:06,801 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 21:51:08,053 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 21:51:14,556 views Incomplete Google Drive upload data
-WARNING 2024-07-30 21:51:14,557 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 21:51:14,560 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 21:51:14,605 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 21:51:14,607 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-ERROR 2024-07-30 21:57:44,225 views Incomplete Google Drive upload data
-WARNING 2024-07-30 21:57:44,225 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 21:57:44,226 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 21:57:44,254 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 21:57:44,255 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-INFO 2024-07-30 22:01:27,383 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:01:28,794 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 22:01:34,580 views Incomplete Google Drive upload data
-WARNING 2024-07-30 22:01:34,580 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 22:01:34,581 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 22:01:34,632 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 22:01:34,633 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-INFO 2024-07-30 22:02:34,353 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:02:35,931 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 22:02:41,500 views Incomplete Google Drive upload data
-WARNING 2024-07-30 22:02:41,501 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 22:02:41,502 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 22:02:41,556 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 22:02:41,558 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-INFO 2024-07-30 22:04:16,783 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:04:18,184 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 22:04:23,691 views Incomplete Google Drive upload data
-WARNING 2024-07-30 22:04:23,692 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 22:04:23,694 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 22:04:23,742 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 649, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 22:04:23,743 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 101810
-INFO 2024-07-30 22:06:05,339 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:06:06,766 autoreload Watching for file changes with StatReloader
-INFO 2024-07-30 22:37:32,838 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:37:34,284 autoreload Watching for file changes with StatReloader
-INFO 2024-07-30 22:39:05,029 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:39:06,009 autoreload Watching for file changes with StatReloader
-INFO 2024-07-30 22:41:54,775 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py changed, reloading.
-INFO 2024-07-30 22:41:55,960 autoreload Watching for file changes with StatReloader
-ERROR 2024-07-30 22:42:04,694 views Incomplete Google Drive upload data
-WARNING 2024-07-30 22:42:04,695 log Bad Request: /custom_components/FileDownloadView/
-WARNING 2024-07-30 22:42:04,695 basehttp "POST /custom_components/FileDownloadView/ HTTP/1.1" 400 47
-ERROR 2024-07-30 22:42:04,732 log Internal Server Error: /custom_components/api/dms_download/
-Traceback (most recent call last):
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\exception.py", line 55, in inner
-    response = get_response(request)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\decorators\csrf.py", line 56, in wrapper_view
-    return view_func(*args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\django\views\generic\base.py", line 104, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 509, in dispatch
-    response = self.handle_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 469, in handle_exception
-    self.raise_uncaught_exception(exc)
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 480, in raise_uncaught_exception
-    raise exc
-  File "C:\Users\laxmi\AppData\Local\Programs\Python\Python310\lib\site-packages\rest_framework\views.py", line 506, in dispatch
-    response = handler(request, *args, **kwargs)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 641, in post
-    self.send_filename_to_api(data)
-  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\custom_components\views.py", line 660, in send_filename_to_api
-    raise Exception(f"Failed to send data to external API: {response.text}")
-Exception: Failed to send data to external API: {"error":"Incomplete Google Drive upload data"}
-ERROR 2024-07-30 22:42:04,734 basehttp "POST /custom_components/api/dms_download/ HTTP/1.1" 500 102951
+  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py", line 1011, in get
+    dms_names = [dms.dms.filename for dms in dms_data_qs if dms.dms is not None]
+  File "D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py", line 1011, in <listcomp>
+    dms_names = [dms.dms.filename for dms in dms_data_qs if dms.dms is not None]
+AttributeError: 'Dms' object has no attribute 'filename'
+ERROR 2024-07-31 13:39:12,182 basehttp "GET /cases_related_form/2/46/260/ HTTP/1.1" 500 101166
+INFO 2024-07-31 13:39:41,830 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:39:42,868 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:39:49,446 basehttp "GET /cases_related_form/2/46/260/ HTTP/1.1" 200 529
+INFO 2024-07-31 13:41:18,533 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:41:19,863 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:41:32,808 autoreload D:\SKYCODE_FORM_BUILDER\Skycode_version_1\formbuilder_backend\form_generator\views.py changed, reloading.
+INFO 2024-07-31 13:41:33,287 autoreload Watching for file changes with StatReloader
+INFO 2024-07-31 13:41:39,914 basehttp "GET /cases_related_form/2/46/260/ HTTP/1.1" 200 832

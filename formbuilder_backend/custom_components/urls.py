@@ -60,6 +60,8 @@ urlpatterns = [
          name='dashboard-list-create'),
     path('dashboards/<int:organization_id>/<int:pk>/', DashboardRetrieveUpdateDestroyView.as_view(),
          name='dashboard-detail'),
+    path('user_dashboard/<int:organization_id>/<int:usergroup>/', DashboardRetrieveUpdateDestroyView.as_view(), name='dashboard-detail'),
+
     # Dashboard URL ends
     # DMS URL starts
     path('dms/<int:organization_id>/', DmsListCreateView.as_view(), name='dms-list-create'),
