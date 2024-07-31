@@ -678,7 +678,7 @@ class DMSAPIView(APIView):
         return Response({"message": "Filename and details are downloaded ."}, status=status.HTTP_200_OK)
 
     def send_filename_to_api(self,config_details_schema):
-        external_api_url = 'http://192.168.0.106:8000/custom_components/FileDownloadView/'
+        external_api_url = 'http://65.0.94.137/custom_components/FileDownloadView/'
         # Separate config_details_schema from the other data
         # Prepare the data for the request
         # data_to_send = {
