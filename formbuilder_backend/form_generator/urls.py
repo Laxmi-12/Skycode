@@ -9,7 +9,7 @@ from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
 from .views import *
-
+from .views import CustomPasswordResetView
 urlpatterns = [
 
     # mohan_dev class based
@@ -26,8 +26,9 @@ urlpatterns = [
     # edit ID based form records
 
     # User created by Admin based on organization and usergroup starts
-    path('create-user/', UserCreateView.as_view(), name='create-user'),
-    path('user_list/<int:user_id>/', UserCreateView.as_view()),  # For retrieve, update, delete
+    path('create-user/', UserCreateView.as_view(), name='create-user'), # to create a user by Admin
+    path('users_list/<int:organization_id>/', UserCreateView.as_view(), name='user-list-by-organization'),
+    path('user_list/<int:organization_id>/<int:user_id>/', UserCreateView.as_view()),  # For retrieve, update, delete
     # User created by Admin based on organization and usergroup ends
 
     # # List and create users for a specific organization
@@ -39,11 +40,14 @@ urlpatterns = [
     # tws bgn
     # mohan_dev
     path('start_process/', CreateProcessView.as_view(), name='create_process'),
-
     path('start_process/<int:pk>/', CreateProcessView.as_view(), name='get_process'),  # to initiate the process
-    path('api/login/', LoginView.as_view(), name='login'),
 
+    path('api/login/', LoginView.as_view(), name='login'),
+    path('api/login/<organization_id>/', LoginView.as_view(), name='login'),
+
+    path('password-reset/<int:user_id>/<str:token>/', CustomPasswordResetView.as_view(), name='password_reset'),
     # praba_dev
+    path('organizations/<int:organization_id>/cases/', OrganizationCasesView.as_view(), name='organization_cases'),
     path('case_details/<int:organization_id>/<int:process_id>/<int:case_id>/', CaseDetailView.as_view(),
          name='case-detail'),
     path('process_related_cases/', CaseRelatedFormView.as_view(), name='case_related_forms'),
@@ -57,8 +61,18 @@ urlpatterns = [
     # tws end
 
     # praba_dev
+    path('filled_data/', UserFilledDataView.as_view(), name='filled_form_list'),  # List all filled data
+    path('filled_data/<int:organization_id>/', UserFilledDataView.as_view(), name='filled_form_by_org'),
+    # Filter by organization
+    path('filled_data/<int:organization_id>/<int:pk>/', UserFilledDataView.as_view(), name='filled_form_detail'),
+    # Filter by organization and pk
+
+
     path('filled_data/', UserFilledDataView.as_view(), name='filled_form'),  # to get and post user filled form data
     path('filled_data/<int:pk>/', UserFilledDataView.as_view(), name='filled_data-save'),  # to edit,update and delete
+
+
+
     path('coredata/', CoreData.as_view(), name='core_data'),
     path('coredata/<int:pk>/', CoreDataFilledForm.as_view(), name='core_data_save'),
 

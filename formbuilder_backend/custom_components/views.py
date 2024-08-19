@@ -1,3 +1,6 @@
+import uuid
+from sqlite3 import IntegrityError
+
 from django.http.multipartparser import MultiPartParser
 from django.shortcuts import get_object_or_404, get_list_or_404
 from django.urls import reverse
@@ -7,7 +10,7 @@ from django.utils.http import urlsafe_base64_encode
 from rest_framework.parsers import FormParser
 
 from .models import Bot, BotSchema, Integration, IntegrationDetails, Organization, UserGroup, Permission, Ocr, Dms, \
-    Dashboard,Dms_data
+    Dashboard, Dms_data
 from form_generator.models import CreateProcess, FormDataInfo, Rule, Case, UserData, FormPermission
 from form_generator.serializer import CreateProcessSerializer, FormDataInfoSerializer, RuleSerializer, \
     FilledDataInfoSerializer, UserLoginSerializer, CreateProcessResponseSerializer
@@ -54,7 +57,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
 from time import sleep
-
+from selenium.webdriver.chrome.options import Options
 # api integration and screen scraping END
 
 # Import for Components END --
@@ -125,18 +128,7 @@ IGNORE_ERRORS = [
 ]
 
 
-# class ListProcessesByOrganization(APIView):
-#     """
-#     List all processes in the organization
-#     """
-#
-#     def get(self, request, organization_id):
-#         try:
-#             processes = CreateProcess.objects.filter(organization_id=organization_id)
-#             serializer = CreateProcessSerializer(processes, many=True)
-#             return Response(serializer.data, status=status.HTTP_200_OK)
-#         except Exception as e:
-#             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class ListProcessesByOrganization(APIView):
     """
     List processes by organization ID and optionally by process ID,
@@ -156,20 +148,36 @@ class ListProcessesByOrganization(APIView):
             # Fetch related bots, integrations, and rules for each process
             for process_data in data:
                 flow_id = process_data['id']
-                process_data['bots'] = list(BotSchema.objects.filter(flow_id=flow_id).values())
+                bots = BotSchema.objects.filter(flow_id=flow_id).select_related('bot')
+                process_data['bots'] = [{
+                    'id': bot.id,
+                    'bot_uid': bot.bot.bot_uid,  # Include bot_uid
+                    'bot_name': bot.bot.bot_name,
+                    'bot_description': bot.bot.bot_description,
+                    'bot_schema_json': bot.bot_schema_json,
+                    'organization_id': bot.organization_id,
+                    'flow_id_id': bot.flow_id_id
+                } for bot in bots]
+                # process_data['bots'] = list(BotSchema.objects.filter(flow_id=flow_id).values())
+                # print("process_data['bots']",process_data['bots'])
                 process_data['integrations'] = list(Integration.objects.filter(flow_id=flow_id).values())
                 process_data['rules'] = {'RuleConditions': list(Rule.objects.filter(processId=flow_id).values())}
                 process_data['form'] = list(FormDataInfo.objects.filter(processId=flow_id).values())
-
+                process_data['ocr'] = list(Ocr.objects.filter(flow_id=flow_id).values())
+                print("process_data['bots']", process_data)
                 # Fetch form data along with permissions
                 forms = FormDataInfo.objects.filter(processId=flow_id).values()
                 print("forms", forms)
                 for form in forms:
                     form_permissions = FormPermission.objects.filter(form_id=form['id']).values('user_group', 'read',
                                                                                                 'write', 'edit')
-                    form['permissions'] = list(form_permissions) if form_permissions else None
+                    form['permissions'] = list(form_permissions) if form_permissions else []
 
                 process_data['form'] = list(forms)
+                # Fetch and include user groups
+                user_groups = process_data['user_group']  # Assuming user_group is already serialized as a list of IDs
+                process_data['user_groups'] = UserGroup.objects.filter(id__in=user_groups).values('id', 'group_name')
+
             # Logging success
             logger.info(f"Successfully retrieved processes for organization {organization_id}")
 
@@ -488,39 +496,23 @@ class OcrDetailView(generics.RetrieveUpdateDestroyAPIView):
 class DashboardListCreateView(generics.ListCreateAPIView):
     serializer_class = DashboardSerializer
 
-
-
     def get_queryset(self):
         organization_id = self.kwargs.get('organization_id')
-        print("organization_id",organization_id)
+        print("organization_id", organization_id)
         return Dashboard.objects.filter(organization_id=organization_id)
 
     def perform_create(self, serializer):
         organization_id = self.kwargs.get('organization_id')
-        print("organization_id", organization_id)
         try:
-            # Fetch the organization object based on organization_id
-            organization = Organization.objects.get(id=organization_id)
-            serializer.save(organization=organization)
-        except Organization.DoesNotExist:
-            raise ValidationError("The specified organization does not exist.")
+            serializer.save(organization_id=organization_id)
         except ValidationError as e:
             logger.error(f"Validation error while creating dashboard: {e.detail}")
             raise e
         except Exception as e:
             logger.error(f"Unexpected error while creating dashboard: {e}")
             raise ValidationError("An unexpected error occurred while creating the dashboard.")
-    # def perform_create(self, serializer):
-    #     organization_id = self.kwargs.get('organization_id')
-    #     print("organization_id", organization_id)
-    #     try:
-    #         serializer.save(organization_id=organization_id)
-    #     except ValidationError as e:
-    #         logger.error(f"Validation error while creating dashboard: {e.detail}")
-    #         raise e
-    #     except Exception as e:
-    #         logger.error(f"Unexpected error while creating dashboard: {e}")
-    #         raise ValidationError("An unexpected error occurred while creating the dashboard.")
+
+
 
     def create(self, request, *args, **kwargs):
         try:
@@ -533,28 +525,44 @@ class DashboardRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DashboardSerializer
     queryset = Dashboard.objects.all()
 
-    # permission_classes = [IsAuthenticated]
-
-    # def get_queryset(self):
-    #     organization_id = self.kwargs.get('organization_id')
-    #     return Dashboard.objects.filter(organization_id=organization_id)
-
 
     def get_queryset(self):
         organization_id = self.kwargs.get('organization_id')
         usergroup = self.kwargs.get('usergroup')
-        return Dashboard.objects.filter(organization_id=organization_id, usergroup=usergroup)
+        if usergroup is not None:
+            return Dashboard.objects.filter(organization_id=organization_id, usergroup=usergroup)
+        else:
+            return Dashboard.objects.filter(organization_id=organization_id)
+        # return Dashboard.objects.filter(organization_id=organization_id, usergroup=usergroup)
 
     def get_object(self):
-        queryset = self.get_queryset()
-        filter_kwargs = {
-            'organization_id': self.kwargs.get('organization_id'),
-            'usergroup': self.kwargs.get('usergroup')
-        }
-        obj = get_object_or_404(queryset, **filter_kwargs)
+        organization_id = self.kwargs.get('organization_id')
+        usergroup = self.kwargs.get('usergroup')
+        pk = self.kwargs.get('pk')
+
+        if pk is not None:  # Handling case where dashboard ID is provided
+            filter_kwargs = {
+                'id': pk,
+                'organization_id': organization_id
+            }
+        elif usergroup is not None:  # Handling case where usergroup is provided
+            filter_kwargs = {
+                'organization_id': organization_id,
+                'usergroup': usergroup
+            }
+        else:
+            raise ValidationError("Invalid parameters provided")
+
+        obj = get_object_or_404(Dashboard.objects.all(), **filter_kwargs)
         return obj
 
-
+        # queryset = self.get_queryset()
+        # filter_kwargs = {
+        #     'organization_id': self.kwargs.get('organization_id'),
+        #     'usergroup': self.kwargs.get('usergroup')
+        # }
+        # obj = get_object_or_404(queryset, **filter_kwargs)
+        # return obj
 
     def perform_update(self, serializer):
         try:
@@ -576,11 +584,8 @@ class DashboardRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 # API to create Dashboard Ends #################################
 
 # API to create DMS Starts #####################################
-
 class DmsListCreateView(generics.ListCreateAPIView):
-    serializer_class = DmsDataSerializer
-
-    # permission_classes = [IsAuthenticated]
+    serializer_class = DmsSerializer
 
     def get_queryset(self):
         organization_id = self.kwargs['organization_id']
@@ -588,11 +593,52 @@ class DmsListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         organization_id = self.kwargs['organization_id']
-        serializer.save(organization_id=organization_id)
+        try:
+            organization = Organization.objects.get(id=organization_id)
+            serializer.save(organization=organization)
+        except Organization.DoesNotExist:
+            raise ValidationError({"organization_id": "Invalid organization ID."})
+        except IntegrityError as e:
+            logger.error(f"IntegrityError: {e}")
+            raise ValidationError({"detail": str(e)})
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError as e:
+            logger.error(f"IntegrityError in create: {e}")
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# class DmsListCreateView(generics.ListCreateAPIView):
+#     serializer_class = DmsDataSerializer
+#
+#     # permission_classes = [IsAuthenticated]
+#
+#     def get_queryset(self):
+#         organization_id = self.kwargs['organization_id']
+#         return Dms.objects.filter(organization_id=organization_id)
+#
+#     def perform_create(self, serializer):
+#         organization_id = self.kwargs['organization_id']
+#         # Retrieve the Organization instance using the provided organization_id
+#         # organization = Organization.objects.get(id=organization_id)
+#         # serializer.save(organization_id=organization_id)
+#         try:
+#             organization = Organization.objects.get(id=organization_id)
+#             serializer.save(organization=organization)
+#         except Organization.DoesNotExist:
+#             raise ValidationError({"organization_id": "Invalid organization ID."})
+#
+#     def create(self, request, *args, **kwargs):
+#         try:
+#             return super().create(request, *args, **kwargs)
+#         except IntegrityError as e:
+#             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class DmsRetrieveUpdateView(generics.RetrieveUpdateAPIView):
-    serializer_class = DmsDataSerializer
+    # serializer_class = DmsDataSerializer
+    serializer_class = DmsSerializer
     # permission_classes = [IsAuthenticated]
     lookup_field = 'id'
 
@@ -600,44 +646,17 @@ class DmsRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         organization_id = self.kwargs['organization_id']
         return Dms.objects.filter(organization_id=organization_id)
 
+
+# class DmsDataListView(generics.ListAPIView):
+#     queryset = Dms_data.objects.all()
+#     serializer_class = DmsDataSerializer
+
 class DmsDataListView(generics.ListAPIView):
-    queryset = Dms_data.objects.all()
     serializer_class = DmsDataSerializer
 
-
-# def send_filename_to_api(dms_data_id):
-#     try:
-#         # Retrieve the Dms_data instance
-#         dms_data = Dms_data.objects.get(id=dms_data_id)
-#         print("dms_data",dms_data)
-#         filename = dms_data.filename
-#         print("filename", filename)
-#
-#
-#         if filename is None:
-#             raise ValueError("Filename is not set for the given Dms_data instance.")
-#
-#         # Prepare the data to send
-#         data = {'filename': filename}
-#
-#         # Define the target API URL
-#         target_api_url = 'http://192.168.0.106:8000/FileDownloadView/'
-#
-#         # Send the POST request
-#         response = requests.post(target_api_url, json=data)
-#
-#         # Check the response
-#         response.raise_for_status()  # Raise an exception for HTTP errors
-#         print("Filename sent successfully!")
-#
-#     except Dms_data.DoesNotExist:
-#         print("Dms_data instance not found.")
-#
-#     except ValueError as ve:
-#         print(f"ValueError: {ve}")
-#
-#     except requests.RequestException as re:
-#         print(f"RequestException: {re}")
+    def get_queryset(self):
+        organization_id = self.kwargs.get('organization_id')
+        return Dms_data.objects.filter(organization_id=organization_id)
 
 
 class DMSAPIView(APIView):
@@ -654,7 +673,7 @@ class DMSAPIView(APIView):
 
         # Fetch the Dms instance associated with the given organization ID
         try:
-            dms_instance = Dms.objects.get(organization_id=organization_id)
+            dms_instance = Dms.objects.get(organization=organization_id)
         except Dms.DoesNotExist:
             return Response({"error": "DMS entry not found for the given organization."},
                             status=status.HTTP_404_NOT_FOUND)
@@ -663,22 +682,18 @@ class DMSAPIView(APIView):
         drive_types = dms_instance.drive_types
         config_details_schema = dms_instance.config_details_schema
         config_details_schema['drive_types'] = drive_types
-        config_details_schema['filename']=filename
-        # Prepare data to send to the external API
-        # data = {
-        #     'filename': filename,
-        #     'drive_types': drive_types,
-        #     'config_details_schema': config_details_schema
-        # }
-        # print("data",data)
+        config_details_schema['filename'] = filename
+
+        print("config_details_schema", config_details_schema)
 
         # Send the filename and additional data to another API
         self.send_filename_to_api(config_details_schema)
 
         return Response({"message": "Filename and details are downloaded ."}, status=status.HTTP_200_OK)
 
-    def send_filename_to_api(self,config_details_schema):
-        external_api_url = 'http://192.168.0.106:8000/custom_components/FileDownloadView/'
+    def send_filename_to_api(self, config_details_schema):
+        # external_api_url = 'http://192.168.0.106:8000/custom_components/FileDownloadView/'
+        external_api_url = f'{settings.BASE_URL}/custom_components/FileDownloadView/'
         # Separate config_details_schema from the other data
         # Prepare the data for the request
         # data_to_send = {
@@ -686,7 +701,7 @@ class DMSAPIView(APIView):
         #     'drive_types': data['drive_types'],
         #     'config_details_schema': json.dumps(data['config_details_schema'])  # JSON stringify the config details
         # }
-
+        print("config_details_schema", config_details_schema)
         response = requests.post(
             external_api_url,
             data=config_details_schema
@@ -694,17 +709,7 @@ class DMSAPIView(APIView):
         if response.status_code != 200:
             raise Exception(f"Failed to send data to external API: {response.text}")
 
-    # def post(self, request, *args, **kwargs):
-    #     # Extract filename from request data
-    #     filename = request.data.get('filename')
-    #
-    #     if filename is None:
-    #         return Response({"error": "Filename not provided."}, status=status.HTTP_400_BAD_REQUEST)
-    #
-    #     # Send the filename to another API
-    #     send_filename_to_api(filename)
-    #
-    #     return Response({"message": "Filename sent to API."}, status=status.HTTP_200_OK)
+
 # API to create DMS Ends #####################################
 
 
@@ -719,12 +724,18 @@ class ProcessBuilder(APIView):
         organization_id = request.data.get("org_id")
         # Extract participants
         participants = request.data.get("participants")
+
+        user_groups = request.data.get("user_group")
         data = request.data
         print("data", data)
 
         try:
             process = CreateProcess.objects.get(id=process_id)
             process.participants = participants  # Assuming participants is a JSON field
+            if user_groups is not None:
+                process.user_group.set(user_groups)  # user_groups should be a list of IDs
+
+            process.save()
             process.save()
 
         except CreateProcess.DoesNotExist:
@@ -797,7 +808,7 @@ class ProcessBuilder(APIView):
 
             else:
                 process.delete()  # Rollback if Integration creation fails
-                integration_instance.delete()
+                # integration_instance.delete()
                 return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         # Create FormDataInfo instances
@@ -808,7 +819,7 @@ class ProcessBuilder(APIView):
             Form_uid = form_data.get('Form_uid')
             form_json_schema = form_data.get('form_json_schema')
             form_description = form_data.get('form_description')
-            user_permission = form_data.get('permissions')
+            user_permission = form_data.get('permissions', None)
             # print("user_permissionssssssssssssss", user_permission)
             # user_group = user_permission[0]['user_group']
             #
@@ -827,27 +838,29 @@ class ProcessBuilder(APIView):
 
                 }
             )
+            if user_permission:
+                # Clear existing permissions to avoid duplicates
+                FormPermission.objects.filter(form=form_data_instance).delete()
 
-            # Clear existing permissions to avoid duplicates
-            FormPermission.objects.filter(form=form_data_instance).delete()
+                # Create or update FormPermissions
+                for permission in user_permission:
+                    user_group = permission['user_group']
+                    read = permission['read']
+                    write = permission['write']
+                    edit = permission['edit']
 
-            # Create or update FormPermissions
-            for permission in user_permission:
-                user_group = permission['user_group']
-                read = permission['read']
-                write = permission['write']
-                edit = permission['edit']
+                    user_group = UserGroup.objects.get(id=user_group)
 
-                user_group = UserGroup.objects.get(id=user_group)
+                    FormPermission.objects.create(
+                        form=form_data_instance,
+                        user_group=user_group,
+                        read=read,
+                        write=write,
+                        edit=edit,
+                    )
 
-                FormPermission.objects.create(
-                    form=form_data_instance,
-                    user_group=user_group,
-                    read=read,
-                    write=write,
-                    edit=edit,
-                )
-
+                else:
+                    print("No permissions provided for form:", form_name)
                 # return Response({"message": "Form data and permissions saved successfully"}, status=status.HTTP_201_CREATED)
 
         rule_data_info_list = request.data.get('rules', {})
@@ -953,11 +966,31 @@ logger = logging.getLogger(__name__)
 # This function gets the Google Drive service file and authenticate to access the file service account key file is
 # integrated in settings.py
 def get_google_drive_service():
-    creds = service_account.Credentials.from_service_account_file(
-        settings.SERVICE_ACCOUNT_KEY_FILE,
-        scopes=['https://www.googleapis.com/auth/drive']
-    )
-    return build('drive', 'v3', credentials=creds)
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            settings.SERVICE_ACCOUNT_KEY_FILE,
+            scopes=['https://www.googleapis.com/auth/drive']
+        )
+        # Log credentials validity and token refresh
+        if not creds.valid:
+            if creds.expired and creds.refresh_token:
+                logging.debug("Refreshing expired credentials")
+                creds.refresh(Request())
+            else:
+                logging.error("Invalid credentials and no refresh token available")
+                return None
+
+        # Build and return the Google Drive service
+        return build('drive', 'v3', credentials=creds)
+        # service = build('drive', 'v3', credentials=creds)
+        # return service
+
+    except Exception as e:
+        logging.error(f"An error occurred while creating the Google Drive service: {str(e)}")
+        return None
+
+
+#return build('drive', 'v3', credentials=creds)
 
 
 # Download the file from drive and store
@@ -981,12 +1014,15 @@ def download_file(drive_service, file_id, file_name):
         request = drive_service.files().get_media(fileId=file_id)
     temp_file_path = os.path.join(settings.MEDIA_ROOT, 'tmp', file_name)
     os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
-
-    with io.FileIO(temp_file_path, 'wb') as fh:
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
+    try:
+        with io.FileIO(temp_file_path, 'wb') as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+    except Exception as e:
+        print(f"An error occurred while downloading the file: {e}")
+        return {"error": f"An error occurred while downloading the file: {e}"}
 
     return temp_file_path
 
@@ -1049,22 +1085,30 @@ def list_drive_files(request):
     file_type = request_data.get('file_type')
 
     completed_folder_id = request_data.get('completed_folder_id')
+    print("completed_folder_id", completed_folder_id)
+    # Initialize the Drive service
     drive_service = get_google_drive_service()
+    if not drive_service:
+        print("Failed to create Google Drive service.")
+        return
 
     query = f"'{folder_id}' in parents"
-
+    print("query", query)
     if file_type:
         mime_type = get_mime_type(file_type)
+        print("mime_type", mime_type)
         query += f" and mimeType='{mime_type}'"
+        print("query", query)
 
     try:
         results = drive_service.files().list(q=query).execute()
 
+        print("results",results)
     except HttpError as error:
         return Response({"error": f"An error occurred: {error}"}, status=400)
 
     items = results.get('files', [])
-
+    print("items", items)
     files = []
     for item in items:
         file_id = item['id']
@@ -1245,23 +1289,53 @@ class AutomationSetting:
     @staticmethod
     def initialize_driver(form_status):
         """Initialize the WebDriver and store it as a class attribute."""
-        try:
-            if AutomationSetting.driver is None:
-                # s = Service(executable_path=ChromeDriverManager().install())
-                # s = Service(ChromeDriverManager().install())
-                # s = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-                driver = webdriver.Chrome(ChromeDriverManager().install())
-
-                AutomationSetting.driver = webdriver.Chrome(service=driver)
+        if AutomationSetting.driver is None:
+            try:
+                logger.info("Installing ChromeDriver using ChromeDriverManager...")
+                # Ensure the path is pointing to the correct executable
+                driver_path = ChromeDriverManager().install()
+                if not driver_path.endswith("chromedriver.exe"):
+                    driver_path = driver_path.replace("THIRD_PARTY_NOTICES.chromedriver", "chromedriver.exe")
+                logger.info(f"ChromeDriver installed at: {driver_path}")
+                logger.info("Initializing Chrome WebDriver...")
+                chrome_options = Options()
+                # Remove headless mode if you want a graphical interface
+                chrome_options.add_argument("--disable-gpu")
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                s = Service(executable_path=driver_path)
+                AutomationSetting.driver = webdriver.Chrome(service=s)
                 AutomationSetting.driver.maximize_window()
                 logger.info("WebDriver initialized successfully.")
+                form_status['initialized'] = True  # Update form_status
+            except WebDriverException as wde:
+                form_status['error'] = f"Error initializing WebDriver: {wde}"
+                logger.error(f"Error initializing WebDriver: {wde}")
+                raise
+            except Exception as e:
+                form_status['error'] = f"Error initializing WebDriver: {e}"
+                logger.error(f"An unexpected error occurred: {e}")
+                raise
 
-            form_status['initialized'] = True  # Update form_status
-
-        except WebDriverException as wde:
-            form_status['error'] = f"Error initializing WebDriver: {wde}"
-            logger.error(form_status['error'])
-            raise
+    # def initialize_driver(form_status):
+    #     """Initialize the WebDriver and store it as a class attribute."""
+    #     try:
+    #         if AutomationSetting.driver is None:
+    #             # s = Service(executable_path=ChromeDriverManager().install())
+    #             # s = Service(ChromeDriverManager().install())
+    #             # s = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+    #             driver = webdriver.Chrome(ChromeDriverManager().install())
+    #
+    #             AutomationSetting.driver = webdriver.Chrome(service=driver)
+    #             AutomationSetting.driver.maximize_window()
+    #             logger.info("WebDriver initialized successfully.")
+    #
+    #         form_status['initialized'] = True  # Update form_status
+    #
+    #     except WebDriverException as wde:
+    #         form_status['error'] = f"Error initializing WebDriver: {wde}"
+    #         logger.error(form_status['error'])
+    #         raise
 
     @staticmethod
     def navigate_to(url, form_status):
@@ -1574,9 +1648,10 @@ class AutomationView(APIView):
             return Response({"error": process_status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+##################### API Integration and screen scraping END #############
+
 class APISetting:
-    """This class handles the preparation, formatting, and execution of API requests, as well as the extraction and
-    comparison of JSON keys in API responses """
+    """This class handles the preparation, formatting, and execution of API requests, as well as the extraction and comparison of JSON keys in API responses"""
 
     @staticmethod
     def find_key_in_response(res_field_id, response_dict):
@@ -1629,16 +1704,20 @@ class APISetting:
     def prepare_payload(item, request_data):
         logger.info("Preparing payload.")
         payload = {}
+        print("prepare_payload item", item)
         for data in request_data:
             request_field_id = data['field_id']
             request_value_type = data['value_type']
             if request_value_type == "value":
                 payload[request_field_id] = data['value']
             elif request_value_type == "field_id":
-                payload[request_field_id] = item.get(data['value'], None)
+                payload[request_field_id] = item.get(data['value'])
+                print("payload[request_field_id]=--------------------", request_field_id)
+                print("item.get(data['value']-------------------------", item.get(data['value']))
                 if payload[request_field_id] is None:
                     logger.warning(f"Field '{data['value']}' not found in item. Setting payload to None.")
         logger.debug(f"Prepared payload: {payload}")
+        print("payload---------------", payload)
         return payload
 
     @staticmethod
@@ -1660,118 +1739,110 @@ class APISetting:
     @staticmethod
     def make_request(input_data, schema_config, process_status, max_retries=3):
         logger.info("Starting request process.")
-        print("input_data-----???????????????????????????", input_data)
-        print("schema_config----------???????????????????????????", schema_config)
+
         basic_url = schema_config['basic_url']
         endpoint_template = schema_config['end_point']
-        headers = schema_config['header'][0]
+        headers = schema_config['header']
         method = schema_config['method'].lower()
-        auth_info = schema_config['auth'][0]
+        auth_info = schema_config['auth']
         timeout = (10, 150)
-
         request_data = schema_config['request']
         response_data = schema_config['response']
         all_responses = []
-        print("request_data+++++++++++++++++++++++++++++++", request_data)
+
         process_status = "started"  # Update status to started
 
         try:
             for item in input_data:
                 payload = APISetting.prepare_payload(item, request_data)
-                formatted_data = APISetting.format_data(payload)
-                print("formatted_data", formatted_data)
+                formatted_data = APISetting.format_data(item)
                 request_url = basic_url + endpoint_template
-                for key, value in payload.items():
+                for key, value in item.items():
                     request_url = request_url.replace(f"{{{key}}}", str(value))
-                request_url = request_url.split("/{")[0]
-                logger.info(f"Request URL: {request_url}")
 
-                for attempt in range(max_retries):
-                    try:
-                        auth = None
-                        if auth_info['auth_type'] == 'basic':
-                            auth = HTTPBasicAuth(auth_info['username'], auth_info['password'])
-                        elif auth_info['auth_type'] == 'oauth':
-                            headers['Authorization'] = f"Bearer {auth_info['oauth_token']}"
-                        elif auth_info['auth_type'] == 'bearer':
-                            headers['Authorization'] = f"Bearer {auth_info['bearer_token']}"
-                        elif auth_info['auth_type'] == "header":
-                            headers['authorization'] = auth_info['authorization']
+            logger.info(f"Request URL: {request_url}")
 
-                        response = getattr(requests, method)(request_url, headers=headers, data=formatted_data,
-                                                             auth=auth, timeout=timeout)
-                        response.raise_for_status()
-                        all_responses.append(response.json())
-                        logger.info("Request successful.")
-                        logger.debug(f"Response: {response.json()}")
-                        response_data_updated = APISetting.compare_json_keys_and_extract(response_data, all_responses)
-                        logger.debug(f"Updated response fields: {response_data_updated}")
-                        process_status = "completed"  # Update status to completed
-                        return response_data_updated, process_status  # Return response_data and status
-                    except (requests.exceptions.SSLError, requests.exceptions.Timeout) as e:
-                        logger.error(f"Request error on attempt {attempt + 1}: {e}")
-                        process_status = f"retrying ({attempt + 1}/{max_retries})"
-                        if attempt < max_retries - 1:
-                            logger.info("Retrying...")
-                            sleep(2)
-                            continue
+            for attempt in range(max_retries):
+                try:
+                    auth = None
+                    if auth_info['auth_type'] == 'basic':
+                        auth = HTTPBasicAuth(auth_info['username'], auth_info['password'])
+                    elif auth_info['auth_type'] in ['oauth', 'bearer']:
+                        headers['Authorization'] = f"Bearer {auth_info['authorization']}"
+                    elif auth_info['auth_type'] == "header":
+                        headers['authorization'] = auth_info['authorization']
+
+                    response = getattr(requests, method)(request_url, headers=headers, data=payload, auth=auth,
+                                                         timeout=timeout)
+                    response.raise_for_status()
+
+                    all_responses.append(response.json())
+                    logger.info("Request successful.")
+                    logger.debug(f"Response: {response.json()}")
+                    response_data_updated = APISetting.compare_json_keys_and_extract(response_data, all_responses)
+                    logger.debug(f"Updated response fields: {response_data_updated}")
+                    process_status = "completed"  # Update status to completed
+                    return response_data_updated, process_status, all_responses
+
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Request error on attempt {attempt + 1}: {e}")
+                    process_status = f"retrying ({attempt + 1}/{max_retries})"
+                    if attempt < max_retries - 1:
+                        logger.info("Retrying...")
+                        sleep(2)
+                    else:
+                        if hasattr(e, 'response') and e.response is not None:
+                            logger.error(f"Final request error: {e.response.status_code} {e.response.content}")
+                            process_status = f"Final request error: {e.response.status_code} {e.response.content}"
                         else:
-                            if e.response:
-                                logger.error(f"Final request error: {e.response.status_code} {e.response.content}")
-                                process_status = f"Final request error: {e.response.status_code} {e.response.content}"
-                            raise Exception(process_status) if e.response else e
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 400:
-                            logger.error(f"Error Request Issues: {e.response.content}")
-                            process_status = f"Error Request Issues: {e.response.content}"
-                            return response_data, process_status
-                        logger.error(f"Final request error: {e.response.status_code} {e.response.content}")
-                        process_status = f"Request error: {e.response.status_code} {e.response.content}"
-                        raise Exception(process_status) if e.response else e
-            # If no exception is raised, status remains completed
-            process_status = "completed"
+                            process_status = f"Final request error: {str(e)}"
+                        return response_data, process_status, all_responses
+
         except Exception as e:
             logger.error(f"An unexpected error occurred: {e}")
             process_status = f"error: {str(e)}"
-            return response_data, process_status
+            return response_data, process_status, all_responses
 
-        return response_data, process_status
+        return response_data, process_status, all_responses
 
 
 class APIIntegrationView(APIView):
-    """This class handles sending requests and processing responses based on the provided input data and
-    configuration. """
+    """This class handles sending requests and processing responses based on the provided input data and configuration."""
 
     def post(self, request):
         logger.info("Received a new request in APIIntegrationView")
 
         try:
-            data = json.loads(request.body)
-
+            data = request.data
+            print("data============================",data)
             input_data = data.get("input_data", [])
+            logger.warning(input_data)
+            print("input_data----------", input_data)
             schema_config = data.get('schema_config')
+            print("schema_config----------", schema_config)
             process_status = schema_config.get('status')
-            print("input_data-----???????????????????????????", input_data)
-            print("schema_config----------???????????????????????????", schema_config)
-            # input_data = Customize_Input.customize_input_data(input_data, schema_config, "api")
-            # print("input_data111----------", input_data)
+            print("process_status----------", process_status)
 
-            # input_data = [Inputdata_Convert er.convert_to_dict(input_data)]
-            # print("input_data----------", input_data)
+            # input_data = Customize_Input.customize_input_data(input_data, schema_config,"api")
+            # print("input_data----------",input_data)
 
-            # print(process_status)Customize_Input
+            # input_data = [Inputdata_Converter.convert_to_dict(input_data)]
+            # print("input_data----------",input_data)
+
+            # print(process_status)
             if not input_data or not schema_config:
                 process_status = "Invalid input data or Schema configuration."
                 logger.warning(process_status)
                 return Response({"error": process_status}, status=status.HTTP_400_BAD_REQUEST)
 
-            response_data, schema_config_status = APISetting.make_request(input_data, schema_config, process_status)
-            print("response_data", response_data)
-            print("schema_config_status", schema_config_status)
+            response_data, process_status, schema_config_status = APISetting.make_request(input_data, schema_config,
+                                                                                          process_status)
             logger.info(schema_config_status)
-
-            return Response({"data": response_data, "status": schema_config_status}, status=status.HTTP_200_OK)
-
+            if process_status == "completed":
+                return Response({"response_data": response_data, "status": schema_config_status},
+                                status=status.HTTP_200_OK)
+            else:
+                return Response({"error": process_status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except json.JSONDecodeError as e:
             process_status = f"JSON decode error: {e}"
             logger.error(process_status)
@@ -1794,11 +1865,11 @@ class APIIntegrationView(APIView):
             return Response({"error": process_status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-##################### API Integration and screen scraping END #############
-
-
+@csrf_exempt
 def initiate_password_reset(request):
-    return auth_views.PasswordResetView.as_view()(request=request)
+    if request.method == 'POST':
+        return auth_views.PasswordResetView.as_view()(request=request)
+    return JsonResponse({'error': 'Invalid method'}, status=405)
 
 
 ########################## creating organization starts ##############################################
@@ -1826,6 +1897,7 @@ class OrganizationBasedProcess(APIView):
         serializer = CreateProcessResponseSerializer(processes, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
 class OrganizationDetailsAPIView(APIView):
     """
     Organization based details starts
@@ -1852,14 +1924,23 @@ class OrganizationDetailsAPIView(APIView):
                 "flow_id": bot["flow_id"],
                 "organization": bot["organization"],
             }
-            if "bot" in bot:
+            bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
+            if bot_info:
                 bot_data.update({
-                    "name": bot["bot"]["name"],
-                    "bot_name": bot["bot"]["bot_name"],
-                    "bot_description": bot["bot"]["bot_description"],
-                    "bot_uid": bot["bot"].get("bot_uid"),
+                    "name": bot_info.get("name", ""),
+                    "bot_name": bot_info.get("bot_name", ""),
+                    "bot_description": bot_info.get("bot_description", ""),
+                    "bot_uid": bot_info.get("bot_uid"),
                 })
             bots_data.append(bot_data)
+            # if "bot" in bot:
+            #     bot_data.update({
+            #         "name": bot["bot"]["name"],
+            #         "bot_name": bot["bot"]["bot_name"],
+            #         "bot_description": bot["bot"]["bot_description"],
+            #         "bot_uid": bot["bot"].get("bot_uid"),
+            #     })
+            # bots_data.append(bot_data)
 
         data = {
             'forms': forms_serializer.data,
@@ -1918,11 +1999,17 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
                 # print("userrrrrrrrrrrrrrr",user.email)
 
                 # Create or update UserData with user_id
-                user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email,user_name = username)
-                user_data.user_id = user.id  # Assuming user_id is a field in UserData to store User's ID
-                user_data.role = 'Admin'  # Assign role as needed
-                user_data.organization = organization  # Assign organization
-                user_data.save()
+                # user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email,user_name = username)
+                # user_data.user_id = user.id  # Assuming user_id is a field in UserData to store User's ID
+                # user_data.role = 'Admin'  # Assign role as needed
+                # user_data.organization = organization  # Assign organization
+                # user_data.save()
+                user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email, defaults={
+                    'user_name': username,
+                    # 'usergroup': usergroup,
+                    'organization': organization,
+                    'user': user  # Store the user ID
+                })
 
                 # Send password reset email to the user's email address
                 self.send_password_reset_email(user_data)
@@ -1943,8 +2030,13 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
             token_generator = PasswordResetTokenGenerator()
             token = token_generator.make_token(user)
             # Constructing reset URL without encoding user_id
-            reset_url = reverse('password_reset_confirm', kwargs={'user_id': user_id, 'token': token})
-            reset_link = self.request.build_absolute_uri(reset_url)
+            reset_url = reverse('password_reset', kwargs={'user_id': user_id, 'token': token})
+            # reset_link = self.request.build_absolute_uri(reset_url)
+            # Combine SITE_URL with the reset URL path to form the full URL
+            # reset_link = f"{settings.SITE_URL}{reset_url}"
+            reset_link = f"{settings.SITE_URL}/{user_id}/reset-continue/{token}"
+            print("reset_link", reset_link)
+
             subject = 'Password Reset'
             body = f'Here is your password reset link: {reset_link}'
 
@@ -1961,8 +2053,6 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
             logger.error(f"Error sending password reset email: {str(e)}")
             return Response({"error": "Failed to send password reset email."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 
     def list(self, request, *args, **kwargs):
         try:
@@ -2160,53 +2250,6 @@ class PasswordResetConfirmView(generics.UpdateAPIView):
 
 
 ########################## Password reset function ends ############################################
-
-########################## Login function starts ###########################################
-
-# @method_decorator(csrf_exempt, name='dispatch')
-# class UserLoginView(generics.GenericAPIView):
-#     serializer_class = UserLoginSerializer
-#
-#     def post(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         username = serializer.validated_data['username']
-#         print("username",username)
-#         password = serializer.validated_data['password']
-#         print("password", password)
-#
-#         logger.debug(f"Attempting to authenticate user: {username}")
-#
-#         user = authenticate(username=username, password=password)
-#         logger.debug(f"Authenticated user: {user}")
-#
-#         if user is not None:
-#             if user.is_active:
-#                 try:
-#                     user_data = UserData.objects.get(username=user.email)
-#                 except UserData.DoesNotExist:
-#                     logger.error(f"User data not found for username: {username}")
-#                     return Response({"error": "User data not found"}, status=status.HTTP_404_NOT_FOUND)
-#
-#                 token, created = Token.objects.get_or_create(user=user)
-#
-#                 response_data = {
-#                     "username": user.username,
-#                     "role": user_data.role,
-#                     "token": token.key,
-#                 }
-#
-#                 logger.info(f"User {username} logged in successfully.")
-#                 return Response(response_data, status=status.HTTP_200_OK)
-#             else:
-#                 logger.error(f"Inactive user attempted to log in: {username}")
-#                 return Response({"error": "User account is inactive"}, status=status.HTTP_401_UNAUTHORIZED)
-#         else:
-#             logger.error(f"Failed login attempt for username: {username}")
-#             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
-
-
-########################## Login function ends ##########################################
 
 
 ######################### API for OCR Components Starts ###################################
@@ -2522,13 +2565,13 @@ class GoogleDrive(APIView):
             current_time = datetime.now().strftime("%H_%M_%S")
             file_name, file_extension = os.path.splitext(file_obj.name)
             modified_filename = f"{file_name}_{current_date}_{current_time}{file_extension}"
-            print("folder_name", folder_name)
+
             # Check if folder exists
             results = service.files().list(
                 q=f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder'",
                 fields="files(id, name)"
             ).execute()
-            print("results ", results)
+
             if results.get('files'):
                 folder_id = results['files'][0]['id']
                 logger.info(f"Found existing folder '{folder_name}' with ID {folder_id}.")
@@ -2540,7 +2583,6 @@ class GoogleDrive(APIView):
                     'description': gdrive_metadata
                 }
                 folder = service.files().create(body=gdrive_file_metadata, fields='id').execute()
-                print("folder ", folder)
                 folder_id = folder.get('id')
                 logger.info(f"Created new folder '{folder_name}' with ID {folder_id}.")
 
@@ -2563,16 +2605,49 @@ class GoogleDrive(APIView):
                 media_body=media,
                 fields='id'
             ).execute()
-            print("file", file)
+
+            file_id = file.get('id')
             logger.info(f'File "{modified_filename}" uploaded successfully to folder "{folder_name}".')
-            return JsonResponse({'file_name': modified_filename, 'file': file,
-                                 'status': f'File "{modified_filename}" uploaded successfully to Google Drive.'},
-                                status=status.HTTP_200_OK)
+
+            # Generate a shareable link for the file
+            download_link = GoogleDrive.generate_shareable_link(service, file_id)
+
+            return JsonResponse({
+                'file_id': file_id,
+                'file_name': modified_filename,
+                'download_link': download_link,
+                'status': f'File "{modified_filename}" uploaded successfully to Google Drive.'
+            }, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"An error occurred during upload: {e}")
             return Response({'error': f'An error occurred during upload: {e}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @staticmethod
+    def generate_shareable_link(service, file_id):
+        """Generates a shareable link for the file."""
+        try:
+            # Update the file permission to public
+            permission = {
+                'type': 'anyone',
+                'role': 'reader'
+            }
+            service.permissions().create(
+                fileId=file_id,
+                body=permission
+            ).execute()
+
+            # # Generate a shareable link
+            # file = service.files().get(fileId=file_id, fields='webViewLink').execute()
+            # return file.get('webViewLink')
+            # Construct the direct download link
+            direct_download_link = f"https://drive.google.com/uc?export=download&id={file_id}"
+            return direct_download_link
+
+        except HttpError as error:
+            logger.error(f"An error occurred during link generation: {error}")
+            return None
 
     @staticmethod
     def download_from_gdrive(file_name, access_token, refresh_token, client_id, client_secret, token_uri):
@@ -2588,7 +2663,7 @@ class GoogleDrive(APIView):
                 fields="files(id, name)"
             ).execute()
             downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
-            # local_file_path = os.path.join(downloads_folder, file_name)
+
             if results.get('files'):
                 file_id = results['files'][0]['id']
                 request = service.files().get_media(fileId=file_id)
@@ -2621,37 +2696,52 @@ class GoogleDrive(APIView):
 
 
 class S3Bucket:
+
     @staticmethod
     def initialize_client(aws_access_key_id, aws_secret_access_key):
         try:
-            return boto3.client(
+            s3_client = boto3.client(
                 's3',
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key
             )
-        except NoCredentialsError:
-            logger.error('Credentials not available')
+            return s3_client
+        except ClientError as e:
+            logger.error(f'Failed to initialize S3 client: {e}')
             return None
 
     @staticmethod
     def upload_to_S3Bucket(files, aws_access_key_id, aws_secret_access_key, bucket_name, s3_bucket_metadata):
         s3_client = S3Bucket.initialize_client(aws_access_key_id, aws_secret_access_key)
-        print("s3_bucket_metadata", s3_bucket_metadata)
         if not s3_client:
             return Response({'error': 'Credentials not available'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
+            # Generate a unique file ID (UUID)
+            file_id = str(uuid.uuid4())
+
+            # Create the filename with the current date, time, and UUID
             current_date = datetime.now().strftime("%d_%b_%Y")
             current_time = datetime.now().strftime("%H_%M_%S")
             file_name, file_extension = files.name.split('.')
-            modified_filename = f"{file_name}_{current_date}_{current_time}.{file_extension}"
-            print("modified_filename ", modified_filename)
+            modified_filename = f"{file_name}_{current_date}_{current_time}_{file_id}.{file_extension}"
+
+            # Upload the file to S3
             s3_client.upload_fileobj(files, bucket_name, modified_filename, ExtraArgs={'Metadata': s3_bucket_metadata})
-            print("modified_filename ")
             logger.info('Files uploaded successfully')
-            return JsonResponse({'file_name': modified_filename,
-                                 'status': f'Files {modified_filename} uploaded successfully to S3Buckets'},
-                                status=status.HTTP_200_OK)
+
+            # Set the object ACL to public-read
+            s3_client.put_object_acl(Bucket=bucket_name, Key=modified_filename, ACL='public-read')
+
+            # Generate the public URL
+            download_link = f"https://{bucket_name}.s3.amazonaws.com/{modified_filename}"
+            print("download_link",download_link)
+            return JsonResponse({
+                'file_id': file_id,
+                'file_name': modified_filename,
+                'download_link': download_link,
+                'status': f'Files {modified_filename} uploaded successfully to S3Buckets'
+            }, status=status.HTTP_200_OK)
 
         except ClientError as e:
             logger.error(f'Failed to upload to S3: {e}')
@@ -2680,23 +2770,21 @@ class FileUploadView(APIView):
     # parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
-        print("data")
 
         drive_type = request.data.get('drive_types')
-        print("drive_type", drive_type)
-        if drive_type == "S3 Bucket":
+        print("drive_type",drive_type)
 
+        if drive_type == "S3 Bucket":
             bucket_name = request.data.get('bucket_name')
-            print("bucket_name", bucket_name)
             aws_access_key_id = request.data.get('aws_access_key_id')
             aws_secret_access_key = request.data.get('aws_secret_access_key')
             s3_bucket_metadata = json.loads(request.data.get('metadata', '{}'))
+            files = request.FILES.get('files')
+            # print(type(files))
 
             if not (bucket_name and aws_access_key_id and aws_secret_access_key):
                 logger.error("Incomplete S3 credentials")
                 return Response({"error": "Incomplete S3 credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
-            files = request.FILES.get('files')
 
             if not files:
                 logger.error("No files provided")
@@ -2712,13 +2800,13 @@ class FileUploadView(APIView):
             token_uri = request.data.get('token_uri')
             folder_name = request.data.get('folder_name')
             gdrive_metadata = request.data.get('metadata')
-            print("gdrive_metadata", gdrive_metadata)
 
             if not (access_token and refresh_token and client_id and client_secret and token_uri and folder_name):
                 logger.error("Incomplete Google Drive upload data")
                 return Response({"error": "Incomplete Google Drive upload data"}, status=status.HTTP_400_BAD_REQUEST)
 
             files = request.FILES.get('files')
+            print(files)
             if not files:
                 logger.error("No files provided")
                 return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
@@ -2726,82 +2814,9 @@ class FileUploadView(APIView):
                                                 client_id, client_secret, token_uri)
 
 
-
-        else:
-            logger.error("Invalid drive_type")
-
-            return Response({"error": "Invalid drive_type"}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class FileDownloadView(APIView):
-    # parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, *args, **kwargs):
-
-        drive_type = request.data.get('drive_types')
-        print("drive_type",drive_type)
-        data = request.data
-        print("data",data)
-        if drive_type == "S3 Bucket":
-            bucket_name = request.data.get('bucket_name')
-            aws_access_key_id = request.data.get('aws_access_key_id')
-            aws_secret_access_key = request.data.get('aws_secret_access_key')
-
-            if not (bucket_name and aws_access_key_id and aws_secret_access_key):
-                logger.error("Incomplete S3 credentials")
-                return Response({"error": "Incomplete S3 credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
-            file_name = request.data.get('filename')
-            if not file_name:
-                logger.error("No file_name provided")
-                return Response({"error": "No file_name provided"}, status=status.HTTP_400_BAD_REQUEST)
-            return S3Bucket.download_from_S3Bucket(file_name, aws_access_key_id, aws_secret_access_key, bucket_name)
-
-
-        elif drive_type == "Google Drive":
-            access_token = request.data.get('access_token')
-            refresh_token = request.data.get('refresh_token')
-            client_id = request.data.get('client_id')
-            client_secret = request.data.get('client_secret')
-            token_uri = request.data.get('token_uri')
-            folder_name = request.data.get('folder_name')
-
-            if not (access_token and refresh_token and client_id and client_secret and token_uri and folder_name):
-                logger.error("Incomplete Google Drive upload data")
-                return Response({"error": "Incomplete Google Drive upload data"}, status=status.HTTP_400_BAD_REQUEST)
-
-            file_name = request.data.get('filename')
-            print("file_name",file_name)
-            if not file_name:
-                logger.error("No file_name provided")
-                return Response({"error": "No file_name provided"}, status=status.HTTP_400_BAD_REQUEST)
-            return GoogleDrive.download_from_gdrive(file_name, access_token, refresh_token, client_id, client_secret,
-                                                    token_uri)
-
-
-
-        # elif drive_type == "OneDrive":
-        #     files = request.FILES.get('files')
-        #     client_id = request.data.get('client_id')
-        #     client_secret = request.data.get('client_secret')
-        #     authority = request.data.get('authority')
-        #     folder_name = request.data.get('folder_name')
-        #     onedrive_metadata = request.data.get('onedrive_metadata')
-        #     token_url = request.data.get('token_url')
-        #     scopes = ['https://graph.microsoft.com/.default']
-
-        #     if not (client_id and client_secret and authority and folder_name and token_url):
-        #         logger.error("Incomplete OneDrive upload data")
-        #         return Response({"error": "Incomplete OneDrive upload data"}, status=status.HTTP_400_BAD_REQUEST)
-
-        #     upload_result = OneDrive.upload_to_onedrive(folder_name, files, onedrive_metadata, client_id, client_secret, authority, scopes, token_url)
-
-        #     # if upload_result == "success":
-        #     #     return Response({"message": "Files uploaded to OneDrive"}, status=status.HTTP_200_OK)
-        #     # else:
-        #     #     return Response({"error": "Failed to upload files to OneDrive"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
         else:
             logger.error("Invalid drive_type")
             return Response({"error": "Invalid drive_type"}, status=status.HTTP_400_BAD_REQUEST)
+
+
 ######################## API for DMS components ends ##################################

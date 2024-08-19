@@ -15,14 +15,27 @@ SECRET_KEY = 'django-insecure-_zw7k@8s@nj%f+7n@_uobzuqwg1hc9_@*ayid=k&aee-0_ysw3
 # secret key used in production secret!
 
 # live url
-BASE_URL = 'http://192.168.0.106:8000'
-# BASE_URL = 'http://192.168.1.6:8000'
+# BASE_URL = 'http://65.0.94.137'
+BASE_URL = 'http://192.168.0.105:8000'
+# SITE_URL = ' http://skycode-client-test.s3-website.ap-south-1.amazonaws.com'
+SITE_URL = 'http://localhost:5173'
+# BASE_URL = 'http://192.168.6.18:8000'
 # BASE_URL = 'http://192.168.1.9:8000'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True  # False
 
 ALLOWED_HOSTS = ['*']
+# ALLOWED_HOSTS = ['your-domain.com', '65.0.94.137']
+
+CSRF_TRUSTED_ORIGINS = ['http://your-domain.com', 'http://65.0.94.137','http://192.168.167.18:8000']
+CORS_ALLOWED_ORIGINS = [
+    'http://your-domain.com',
+    'http://65.0.94.137',
+    'http://192.168.167.18:8000'
+]
+
+
 
 # Application definition
 INSTALLED_APPS = [
@@ -67,6 +80,7 @@ REST_FRAMEWORK = {  # added by mohan
         # 'rest_framework.authentication.SessionAuthentication',
     ],
 }
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Configure session storage
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # added by laxmi Praba

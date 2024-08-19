@@ -67,6 +67,8 @@ urlpatterns = [
     path('dms/<int:organization_id>/', DmsListCreateView.as_view(), name='dms-list-create'),
     path('dms/<int:organization_id>/<int:id>/', DmsRetrieveUpdateView.as_view(),
          name='dms-retrieve-update'),
+    path('api/dms-data/<int:organization_id>/', DmsDataListView.as_view(), name='dms-data-detail'),
+    # to list dms related to organization
 
     path('api/dms-data/', DmsDataListView.as_view(), name='dms-data-detail'),
     path('api/dms_download/', DMSAPIView.as_view(), name='send_filename'),
@@ -89,7 +91,7 @@ urlpatterns = [
     # added by Raji END for OCR Components
     # added by Raji BGN for DMS components
     path('FileUploadView/',FileUploadView.as_view(),name='FileUploadView'),
-    path('FileDownloadView/',FileDownloadView.as_view(),name='FileDownloadView'),
+    # path('FileDownloadView/',FileDownloadView.as_view(),name='FileDownloadView'),
     # added by Raji ENDS for DMS components
 
     # added by Praba BGN - For Organization
@@ -115,12 +117,14 @@ urlpatterns = [
 
     # path('create-permissions/', CreatePermissionsView.as_view(), name='create-permissions'),
 
-    path('password-reset/<int:user_id>/<str:token>/', auth_views.PasswordResetView.as_view(), name='password_reset'),
+    path('password-reset/<int:user_id>/<str:token>/', auth_views.PasswordResetView.as_view(), name='password_reset1'),
+
     path('password-reset/done/', auth_views.PasswordResetDoneView.as_view(), name='password_reset_done'),
     path('password-reset/<str:user_id>/<str:token>/', auth_views.PasswordResetConfirmView.as_view(),
          name='password_reset_confirm'),
     # path('password-reset/confirm/<uidb64>/<token>/', auth_views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('password-reset/complete/', auth_views.PasswordResetCompleteView.as_view(), name='password_reset_complete'),
+    path('api/password-reset/', initiate_password_reset, name='api_password_reset'),
     # other URLs in your application
 
     # path('login/', UserLoginView.as_view(), name='user_login'),

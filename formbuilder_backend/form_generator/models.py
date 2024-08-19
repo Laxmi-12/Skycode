@@ -2,6 +2,7 @@
 author : mohan
 app_name : form_generator
 """
+from django.contrib.auth.models import User
 from django.db import models
 import jsonfield
 from datetime import date
@@ -23,8 +24,8 @@ class CreateProcess(models.Model):
     participants = jsonfield.JSONField(blank=True)
     organization = models.ForeignKey('custom_components.Organization', on_delete=models.CASCADE,
                                      related_name='create_process', blank=True, null=True)
-    usergroup = models.ForeignKey('custom_components.UserGroup', on_delete=models.CASCADE,
-                                  related_name='usergroup_create_process', blank=True, null=True)
+    user_group = models.ManyToManyField('custom_components.UserGroup',
+                                  related_name='usergroup_create_process', blank=True)
 
     def __str__(self):
         return str(self.id)
@@ -36,10 +37,10 @@ class Case(models.Model):
     case management
     """
     processId = models.ForeignKey(CreateProcess, on_delete=models.CASCADE)
-    created_on = models.DateField(null=True, blank=True)
+    created_on = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     created_by = models.CharField(max_length=300, blank=True)
     status = models.CharField(max_length=500)
-    updated_on = models.DateField(null=True, blank=True)
+    updated_on = models.DateTimeField(auto_now=True,null=True, blank=True)
     updated_by = models.CharField(max_length=300, blank=True)
     next_step = models.CharField(max_length=200, blank=True)
     data_json = jsonfield.JSONField(blank=True)
@@ -94,6 +95,8 @@ class UserData(models.Model):
     usergroup = models.ForeignKey('custom_components.UserGroup', on_delete=models.CASCADE,
                                   related_name='usergroup_user_data', blank=True,
                                   null=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, blank=True,
+                                  null=True)  # Add this line
 
     # user = models.ForeignKey(User, on_delete=models.CASCADE)
     # phone_number = models.CharField(max_length=10, blank=True)
@@ -126,6 +129,7 @@ class FilledFormData(models.Model):
     caseId = models.ForeignKey(Case, on_delete=models.CASCADE, null=True, blank=True)
     data_json = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, blank=True, null=True)
     organization = models.ForeignKey('custom_components.Organization', on_delete=models.CASCADE,
                                      related_name='filled_data', blank=True, null=True)
 
@@ -134,7 +138,10 @@ class FilledFormData(models.Model):
         ('Completed', 'Completed'),
     )
     status = models.CharField(max_length=500, choices=CHOICES, null=True, blank=True)
-
+    # user_groups = models.ForeignKey('custom_components.UserGroup', on_delete=models.CASCADE,
+    #                                      related_name='usergroup_filled_form_data', blank=True,null=True)
+    user_groups = models.ManyToManyField('custom_components.UserGroup',
+                                       related_name='usergroup_filled_form_data', blank=True,null=True)
     def __str__(self):
         return str(self.id)
 

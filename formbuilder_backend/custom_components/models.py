@@ -37,6 +37,7 @@ class Organization(models.Model):
     email = models.EmailField()
     org_description = models.TextField(blank=True, null=True)
     large_logo_url = models.URLField(blank=True, null=True)
+    large_logo_url = models.URLField(blank=True, null=True)
     small_logo_url = models.URLField(blank=True, null=True)
     primary_color = models.CharField(max_length=10, blank=True, null=True)
     secondary_color = models.CharField(max_length=10, blank=True, null=True)
@@ -46,6 +47,7 @@ class Organization(models.Model):
 
     # form = models.ForeignKey('form_generator.FormDataInfo', on_delete=models.CASCADE, blank=True, null=True)
     bot = models.ForeignKey(Bot, on_delete=models.CASCADE, blank=True, null=True)
+
     # integration = models.ForeignKey(Integration, on_delete=models.CASCADE, blank=True, null=True)
     # dms = models.ForeignKey(Dms, on_delete=models.CASCADE, blank=True, null=True)
     # ocr = models.ForeignKey(Ocr, on_delete=models.CASCADE, blank=True, null=True)
@@ -80,6 +82,7 @@ class Dashboard(models.Model):
     usergroup = models.ForeignKey(UserGroup, on_delete=models.CASCADE, related_name='usergroup_dashboard', blank=True,
                                   null=True)
     dashboard_config = jsonfield.JSONField(blank=True, null=True)
+
     # status = models.BooleanField(blank=True, null=True)
 
     def __str__(self):
@@ -91,7 +94,7 @@ class BotSchema(models.Model):
     """
     bot 0.2
     """
-    bot = models.ForeignKey(Bot, on_delete=models.CASCADE, default=1)
+    bot = models.ForeignKey(Bot, on_delete=models.CASCADE, blank=True, null=True)
     bot_schema_json = jsonfield.JSONField(blank=True)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='bot_schema', blank=True,
                                      null=True)
@@ -187,8 +190,8 @@ class Dms(models.Model):
     drive_types = models.CharField(max_length=100, choices=CONFIG_TYPES, default='Google Drive')
     config_details_schema = models.JSONField(blank=True, null=True)
     flow_id = models.ForeignKey('form_generator.CreateProcess', on_delete=models.CASCADE,
-                                related_name='flow_dms',blank=True,
-                                     null=True)
+                                related_name='flow_dms', blank=True,
+                                null=True)
 
     def __str__(self):
         return str(self.id)
@@ -208,9 +211,13 @@ class Dms_data(models.Model):
                                      null=True)
     usergroup = models.ForeignKey(UserGroup, on_delete=models.CASCADE, related_name='usergroup_dms_data', blank=True,
                                   null=True)
+    download_link = models.CharField(max_length=1000, blank=True,
+                                     null=True)
     dms = models.ForeignKey(Dms, on_delete=models.CASCADE, related_name='dms_dms_data', blank=True,
                             null=True)
     meta_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, blank=True, null=True)
 
     def __str__(self):
         return str(self.id)
@@ -223,8 +230,8 @@ class Ocr(models.Model):
     OCR_CHOICES = [
         ('Aadhar Card Extraction', 'Aadhar Card Extraction'),
         ('Pan Card Extraction', 'Pan Card Extraction'),
-        ('PDF to TEXT Extraction', 'Pan Card Extraction')
-
+        ('PDF Extraction', 'PDF Extraction'),
+        ('QR Extraction', 'QR Extraction')
 
     ]
 

@@ -43,6 +43,11 @@ class FormDataInfoSerializer(serializers.ModelSerializer):
 
 class FilledDataInfoSerializer(serializers.ModelSerializer):
     data_json = JSONField()
+    created_on = serializers.DateTimeField(source='caseId.created_on', read_only=True)
+    update_on = serializers.DateTimeField(source='caseId.update_on', read_only=True)
+    process_name = serializers.CharField(source='processId.process_name', read_only=True)
+    user_groups = serializers.SerializerMethodField()
+    #user_groups = serializers.IntegerField(source='user_groups.id', read_only=True)
     """
     filled  data serializer
     """
@@ -54,6 +59,8 @@ class FilledDataInfoSerializer(serializers.ModelSerializer):
         model = FilledFormData
         fields = '__all__'
 
+    def get_user_groups(self, obj):
+        return obj.user_groups.values_list('id', flat=True)
 
 class FormPermissionForm(forms.ModelForm):
     class Meta:
@@ -64,6 +71,14 @@ class FormPermissionForm(forms.ModelForm):
 class UserLoginSerializer(serializers.Serializer):
     username = serializers.EmailField()
     password = serializers.CharField(write_only=True, required=True, min_length=8)
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, required=True)
+
+    def validate_password(self, value):
+        # Add any additional password validations here
+        return value
 
 
 # class UserInfoSerializer(serializers.ModelSerializer):
@@ -85,7 +100,7 @@ class UserLoginSerializer(serializers.Serializer):
 class UserDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserData
-        fields = ['user_name', 'mail_id', 'organization', 'usergroup', 'profile_pic']
+        fields = ['id', 'user_name', 'mail_id', 'organization', 'usergroup', 'profile_pic']
 
 
 # adding this for process and case management :
@@ -99,14 +114,14 @@ class CreateProcessSerializer(serializers.ModelSerializer):
         """
 
         model = CreateProcess
-        fields = ['id', 'process_name', 'participants', 'process_description', 'organization', 'usergroup']
+        fields = ['id', 'process_name', 'participants', 'process_description', 'organization', 'user_group']
         # fields = '__all__'
 
 
 class CreateProcessResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = CreateProcess
-        fields = ['id', 'process_name', 'process_description']
+        fields = ['id', 'process_name', 'process_description','user_group']
 
 
 class CaseSerializer(serializers.ModelSerializer):
