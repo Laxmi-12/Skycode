@@ -19,6 +19,7 @@ SECRET_KEY = 'django-insecure-_zw7k@8s@nj%f+7n@_uobzuqwg1hc9_@*ayid=k&aee-0_ysw3
 BASE_URL = 'http://192.168.0.105:8000'
 # SITE_URL = ' http://skycode-client-test.s3-website.ap-south-1.amazonaws.com'
 SITE_URL = 'http://localhost:5173'
+
 # BASE_URL = 'http://192.168.6.18:8000'
 # BASE_URL = 'http://192.168.1.9:8000'
 

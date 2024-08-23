@@ -66,10 +66,11 @@ urlpatterns = [
     # Filter by organization
     path('filled_data/<int:organization_id>/<int:pk>/', UserFilledDataView.as_view(), name='filled_form_detail'),
     # Filter by organization and pk
+    # URL for getting filled forms based on organization alone or a specific filled form by its ID
 
 
-    path('filled_data/', UserFilledDataView.as_view(), name='filled_form'),  # to get and post user filled form data
-    path('filled_data/<int:pk>/', UserFilledDataView.as_view(), name='filled_data-save'),  # to edit,update and delete
+    path('filled_forms/<int:organization_id>/<int:form_id>/', FilledFormDataView.as_view(), name='filled_form'),  # to get and post user filled form data based on organization
+    path('filled_forms/<int:organization_id>/<int:form_id>/<int:pk>/', FilledFormDataView.as_view(), name='filled_data-save'),  # to edit,update and delete
 
 
 

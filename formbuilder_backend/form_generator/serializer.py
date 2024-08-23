@@ -44,7 +44,7 @@ class FormDataInfoSerializer(serializers.ModelSerializer):
 class FilledDataInfoSerializer(serializers.ModelSerializer):
     data_json = JSONField()
     created_on = serializers.DateTimeField(source='caseId.created_on', read_only=True)
-    update_on = serializers.DateTimeField(source='caseId.update_on', read_only=True)
+    updated_on = serializers.DateTimeField(source='caseId.updated_on', read_only=True)
     process_name = serializers.CharField(source='processId.process_name', read_only=True)
     user_groups = serializers.SerializerMethodField()
     #user_groups = serializers.IntegerField(source='user_groups.id', read_only=True)

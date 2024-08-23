@@ -1,6 +1,7 @@
 import uuid
 from sqlite3 import IntegrityError
 
+from django.db import DatabaseError
 from django.http.multipartparser import MultiPartParser
 from django.shortcuts import get_object_or_404, get_list_or_404
 from django.urls import reverse
@@ -81,6 +82,8 @@ import json
 import requests
 from requests.exceptions import RequestException, SSLError, Timeout
 from requests.auth import HTTPBasicAuth
+from rest_framework.exceptions import NotFound
+from django.core.exceptions import ObjectDoesNotExist
 
 from PIL import Image, ImageDraw
 from ultralytics import YOLO
@@ -727,7 +730,7 @@ class ProcessBuilder(APIView):
 
         user_groups = request.data.get("user_group")
         data = request.data
-        print("data", data)
+        logger.info("Received data: %s", data)
 
         try:
             process = CreateProcess.objects.get(id=process_id)
@@ -739,223 +742,232 @@ class ProcessBuilder(APIView):
             process.save()
 
         except CreateProcess.DoesNotExist:
+            logger.error("Process not found: %s", process_id)
             return JsonResponse({"error": "Process not found"}, status=404)
+        except Exception as e:
+            logger.error("Error updating process: %s", str(e))
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Create Bots instances
-        # The part of your view or function handling the request data
-        bots_data = request.data.get('bots', [])  # Get list of bots data, default empty list
-        print("bots_data", bots_data)
-        for bot_data in bots_data:
-            bot_name = bot_data.get('bot_name')
-            bot_uid = bot_data.get('bot_uid')
-            bot_description = bot_data.get('bot_description')
-            bot_schema_json = bot_data.get('bot_schema_json')
+        try:
+            # Create Bots instances
+            # The part of your view or function handling the request data
+            bots_data = request.data.get('bots', [])  # Get list of bots data, default empty list
+            logger.info("Bots data: %s", bots_data)
+            for bot_data in bots_data:
+                bot_name = bot_data.get('bot_name')
+                bot_uid = bot_data.get('bot_uid')
+                bot_description = bot_data.get('bot_description')
+                bot_schema_json = bot_data.get('bot_schema_json')
 
-            bot_data = {  # bot serializer
-                'bot_uid': bot_uid,
-                'bot_name': bot_name,
-                'bot_description': bot_description,
-            }
-            print('bot_data---0.2', bot_data)
-            bot_serializer = BotSerializer(data=bot_data)
-            if bot_serializer.is_valid():
-                bot_instance = bot_serializer.save()
-            else:
-                process.delete()  # Rollback if Bot creation fails
-                return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            # Create BotSchema instance
-            bot_schema_data = {  # bot schema serializer
-                'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
-                'bot_schema_json': bot_schema_json,
-                'flow_id': process_id,
-                'organization': organization_id
-            }
-
-            print('bot_data---0.3', bot_data)
-            bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
-
-            if bot_schema_serializer.is_valid():
-
-                bot_schema_instance = bot_schema_serializer.save()
-                # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
-
-            else:
-                # process.delete()  # Rollback if BotSchema creation fails
-                bot_instance.delete()
-                return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        # Create Integrations instances
-        integrations_data = request.data.get('integrations', [])  # Get list of integrations data, default empty list
-        for integration_data in integrations_data:
-            integration_type = integration_data.get('integration_type')
-            Integration_uid = integration_data.get('Integration_uid')
-            integration_schema_json = integration_data.get('integration_schema')
-
-            # integration_schema = json.dumps(integration_schema_json)
-
-            integration_data = {  # integration serializer
-                'Integration_uid': Integration_uid,
-                'integration_type': integration_type,
-                'integration_schema': integration_schema_json,
-                'flow_id': process_id,
-                'organization': organization_id
-            }
-            print('integration_data---0.4', integration_data)
-            integration_serializer = IntegrationSerializer(data=integration_data)
-            if integration_serializer.is_valid():
-                integration_instance = integration_serializer.save()
-                # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
-
-            else:
-                process.delete()  # Rollback if Integration creation fails
-                # integration_instance.delete()
-                return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        # Create FormDataInfo instances
-        form_data_info_data = request.data.get('form_data_info', [])
-        print("form_data_info_data", form_data_info_data)
-        for form_data in form_data_info_data:
-            form_name = form_data.get('form_name')
-            Form_uid = form_data.get('Form_uid')
-            form_json_schema = form_data.get('form_json_schema')
-            form_description = form_data.get('form_description')
-            user_permission = form_data.get('permissions', None)
-            # print("user_permissionssssssssssssss", user_permission)
-            # user_group = user_permission[0]['user_group']
-            #
-            # print("user_group_id", user_group)
-            process_instance = CreateProcess.objects.get(id=process_id)
-            organization_instance = Organization.objects.get(id=organization_id)
-            # Create or update the Form
-            form_data_instance, created = FormDataInfo.objects.update_or_create(
-                Form_uid=Form_uid,
-                organization=organization_instance,
-                processId=process_instance,
-                defaults={
-                    'form_name': form_name,
-                    'form_json_schema': form_json_schema,
-                    'form_description': form_description
-
+                bot_data = {  # bot serializer
+                    'bot_uid': bot_uid,
+                    'bot_name': bot_name,
+                    'bot_description': bot_description,
                 }
-            )
-            if user_permission:
-                # Clear existing permissions to avoid duplicates
-                FormPermission.objects.filter(form=form_data_instance).delete()
+                print('bot_data---0.2', bot_data)
+                bot_serializer = BotSerializer(data=bot_data)
+                if bot_serializer.is_valid():
+                    bot_instance = bot_serializer.save()
+                else:
+                    process.delete()  # Rollback if Bot creation fails
+                    logger.error("Bot creation failed: %s", bot_serializer.errors)
+                    return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-                # Create or update FormPermissions
-                for permission in user_permission:
-                    user_group = permission['user_group']
-                    read = permission['read']
-                    write = permission['write']
-                    edit = permission['edit']
+                # Create BotSchema instance
+                bot_schema_data = {  # bot schema serializer
+                    'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
+                    'bot_schema_json': bot_schema_json,
+                    'flow_id': process_id,
+                    'organization': organization_id
+                }
 
-                    user_group = UserGroup.objects.get(id=user_group)
+                print('bot_data---0.3', bot_data)
+                bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
 
-                    FormPermission.objects.create(
-                        form=form_data_instance,
-                        user_group=user_group,
-                        read=read,
-                        write=write,
-                        edit=edit,
-                    )
+                if bot_schema_serializer.is_valid():
+                    bot_schema_instance = bot_schema_serializer.save()
+                    # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
+
+                else:
+                    # process.delete()  # Rollback if BotSchema creation fails
+                    bot_instance.delete()
+                    logger.error("BotSchema creation failed: %s", bot_schema_serializer.errors)
+                    return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Create Integrations instances
+            integrations_data = request.data.get('integrations', [])  # Get list of integrations data, default empty list
+            logger.info("Integrations data: %s", integrations_data)
+            for integration_data in integrations_data:
+                integration_type = integration_data.get('integration_type')
+                Integration_uid = integration_data.get('Integration_uid')
+                integration_schema_json = integration_data.get('integration_schema')
+
+                # integration_schema = json.dumps(integration_schema_json)
+
+                integration_data = {  # integration serializer
+                    'Integration_uid': Integration_uid,
+                    'integration_type': integration_type,
+                    'integration_schema': integration_schema_json,
+                    'flow_id': process_id,
+                    'organization': organization_id
+                }
+                print('integration_data---0.4', integration_data)
+                integration_serializer = IntegrationSerializer(data=integration_data)
+                if integration_serializer.is_valid():
+                    integration_instance = integration_serializer.save()
+                    # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
+
+                else:
+                    process.delete()  # Rollback if Integration creation fails
+                    logger.error("Integration creation failed: %s", integration_serializer.errors)
+                    return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create FormDataInfo instances
+            form_data_info_data = request.data.get('form_data_info', [])
+            logger.info("Form data info: %s", form_data_info_data)
+            for form_data in form_data_info_data:
+                form_name = form_data.get('form_name')
+                Form_uid = form_data.get('Form_uid')
+                form_json_schema = form_data.get('form_json_schema')
+                form_description = form_data.get('form_description')
+                user_permission = form_data.get('permissions', [])
+                # print("user_permissionssssssssssssss", user_permission)
+                # user_group = user_permission[0]['user_group']
+                #
+                # print("user_group_id", user_group)
+                process_instance = CreateProcess.objects.get(id=process_id)
+                organization_instance = Organization.objects.get(id=organization_id)
+                # Create or update the Form
+                form_data_instance, created = FormDataInfo.objects.update_or_create(
+                    Form_uid=Form_uid,
+                    organization=organization_instance,
+                    processId=process_instance,
+                    defaults={
+                        'form_name': form_name,
+                        'form_json_schema': form_json_schema,
+                        'form_description': form_description
+
+                    }
+                )
+                if user_permission:
+                    # Clear existing permissions to avoid duplicates
+                    FormPermission.objects.filter(form=form_data_instance).delete()
+
+                    # Create or update FormPermissions
+                    for permission in user_permission:
+                        user_group = permission['user_group']
+                        read = permission['read']
+                        write = permission['write']
+                        edit = permission['edit']
+
+                        user_group = UserGroup.objects.get(id=user_group)
+
+                        FormPermission.objects.create(
+                            form=form_data_instance,
+                            user_group=user_group,
+                            read=read,
+                            write=write,
+                            edit=edit,
+                        )
 
                 else:
                     print("No permissions provided for form:", form_name)
-                # return Response({"message": "Form data and permissions saved successfully"}, status=status.HTTP_201_CREATED)
+                    # return Response({"message": "Form data and permissions saved successfully"}, status=status.HTTP_201_CREATED)
 
-        rule_data_info_list = request.data.get('rules', {})
-        print("rule_data_info", rule_data_info_list)
+            rule_data_info_list = request.data.get('rules', {})
+            logger.info("Rules data: %s", rule_data_info_list)
 
-        # Extract the list of rule conditions
-        rules = rule_data_info_list.get('RuleConditions', [])
-        # Process each rule
-        for rule_data in rules:
-            try:
-                print("Processing rule_data...")
-                rule_id = rule_data.get('rule_uid')
-                print("rule_id:", rule_id)
 
-                rule_json_schema_conditions = rule_data.get('conditions')
-                print("rule_json_schema_conditions:", rule_json_schema_conditions)
+            # Extract the list of rule conditions
+            rules = rule_data_info_list.get('RuleConditions', [])
+            # Process each rule
+            for rule_data in rules:
+                try:
+                    print("Processing rule_data...")
+                    rule_id = rule_data.get('rule_uid')
 
-                # Serialize the conditions to JSON
-                # rule_json_schema = json.dumps(rule_json_schema_conditions)
+                    rule_json_schema_conditions = rule_data.get('conditions')
+                    print("rule_json_schema_conditions:", rule_json_schema_conditions)
 
-                # Prepare the data for serialization
-                rule_data_payload = {
-                    'ruleId': rule_id,
-                    'rule_json_schema': rule_json_schema_conditions,
-                    'processId': process.id,
-                    'organization': organization_id
-                    # Assuming you have a foreign key to process in your Rule model
+                    # Serialize the conditions to JSON
+                    # rule_json_schema = json.dumps(rule_json_schema_conditions)
 
-                }
+                    # Prepare the data for serialization
+                    rule_data_payload = {
+                        'ruleId': rule_id,
+                        'rule_json_schema': rule_json_schema_conditions,
+                        'processId': process.id,
+                        'organization': organization_id
+                        # Assuming you have a foreign key to process in your Rule model
 
-                print('rule_data_payload', rule_data_payload)
-                rule_data_serializer = RuleSerializer(data=rule_data_payload)
-                if rule_data_serializer.is_valid():
-                    rule_data_instance = rule_data_serializer.save()
-                    print(f"Rule {rule_id} saved successfully.")
-                else:
-                    process.delete()  # Rollback if FormDataInfo creation fails
-                    # bot_instance.delete()
-                    # integration_instance.delete()
-                    return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
-                process.delete()  # Rollback if any exception occurs
-                print(f"Error occurred: {e}")
-                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        ## to get OCR component and save in process starts
-        ocr_info_data = request.data.get('ocr', [])
-        print("ocr_info_data", ocr_info_data)
-        for ocr_data in ocr_info_data:
-            name = ocr_data.get('name')
-            description = ocr_data.get('description')
-            ocr_uid = ocr_data.get('ocr_uid')
-            ocr_type = ocr_data.get('ocr_type')
-            organization_instance = Organization.objects.get(id=organization_id)
-            process_instance = CreateProcess.objects.get(id=process_id)
-            ocr_data, created = Ocr.objects.update_or_create(
-                ocr_uid=ocr_uid,
-                organization=organization_instance,
-                name=name,
-                description=description,
-                flow_id=process_instance,
-                ocr_type=ocr_type
-            )
-            return Response({"message": "OCR saved  successfully"})
+                    }
 
-        dms_info_data = request.data.get('dms', [])
-        print("dms_info_data", dms_info_data)
-        for dms_data in dms_info_data:
-            name = dms_data.get('name')
+                    rule_data_serializer = RuleSerializer(data=rule_data_payload)
+                    if rule_data_serializer.is_valid():
+                        rule_data_instance = rule_data_serializer.save()
+                        print(f"Rule {rule_id} saved successfully.")
+                    else:
+                        process.delete()  # Rollback if FormDataInfo creation fails
+                        # bot_instance.delete()
+                        # integration_instance.delete()
+                        logger.error("Rule creation failed: %s", rule_data_serializer.errors)
+                        return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        # return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    process.delete()  # Rollback if any exception occurs
+                    print(f"Error occurred: {e}")
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            ## to get OCR component and save in process starts
+            ocr_info_data = request.data.get('ocr', [])
+            logger.info("OCR data: %s", ocr_info_data)
 
-            description = dms_data.get('description')
+            for ocr_data in ocr_info_data:
+                name = ocr_data.get('name')
+                description = ocr_data.get('description')
+                ocr_uid = ocr_data.get('ocr_uid')
+                ocr_type = ocr_data.get('ocr_type')
+                organization_instance = Organization.objects.get(id=organization_id)
+                process_instance = CreateProcess.objects.get(id=process_id)
+                ocr_data, created = Ocr.objects.update_or_create(
+                    ocr_uid=ocr_uid,
+                    organization=organization_instance,
+                    name=name,
+                    description=description,
+                    flow_id=process_instance,
+                    ocr_type=ocr_type
+                )
+                return Response({"message": "OCR saved  successfully"})
 
-            dms_uid = dms_data.get('dms_uid')
+            dms_info_data = request.data.get('dms', [])
+            logger.info("DMS data: %s", dms_info_data)
 
-            config_type = dms_data.get('drive_types')
+            for dms_data in dms_info_data:
+                name = dms_data.get('name')
+                description = dms_data.get('description')
+                dms_uid = dms_data.get('dms_uid')
+                config_type = dms_data.get('drive_types')
+                config_details = dms_data.get('config_details_schema')
+                organization_instance = Organization.objects.get(id=organization_id)
+                process_instance = CreateProcess.objects.get(id=process_id)
+                print("process_instance", process_instance)
+                dms_data, created = Dms.objects.update_or_create(
+                    dms_uid=dms_uid,
+                    organization=organization_instance,
+                    name=name,
+                    description=description,
+                    drive_types=config_type,
+                    flow_id=process_instance,
+                    config_details_schema=config_details
+                )
+                return Response({"message": "DMS created successfully"})
 
-            config_details = dms_data.get('config_details_schema')
+            ## to get OCR component and save in process ends
 
-            organization_instance = Organization.objects.get(id=organization_id)
-            process_instance = CreateProcess.objects.get(id=process_id)
-            print("process_instance", process_instance)
-            dms_data, created = Dms.objects.update_or_create(
-                dms_uid=dms_uid,
-                organization=organization_instance,
-                name=name,
-                description=description,
-                drive_types=config_type,
-                flow_id=process_instance,
-                config_details_schema=config_details
-            )
-            return Response({"message": "DMS created successfully"})
+            return Response("Process created successfully", status=status.HTTP_201_CREATED)
 
-        ## to get OCR component and save in process ends
-
-        return Response("Process created successfully", status=status.HTTP_201_CREATED)
-
+        except Exception as e:
+            process.delete()  # Rollback if any exception occurs
+            logger.error("Error occurred during processing: %s", str(e))
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 ############################## Google Drive Extraction Bot Functionality ######################################
 
@@ -1184,9 +1196,6 @@ def convert_excel_to_json(request):
         # Convert DataFrame to JSON
         json_data = df.to_json(orient='records', date_format='iso')
 
-        # Update the JSON data in the BotData entry
-        # bot_data_entry.data_schema = json.loads(json_data)
-        # bot_data_entry.save()
 
         # Transform JSON data into the desired format
         transformed_data = []
@@ -1317,25 +1326,7 @@ class AutomationSetting:
                 logger.error(f"An unexpected error occurred: {e}")
                 raise
 
-    # def initialize_driver(form_status):
-    #     """Initialize the WebDriver and store it as a class attribute."""
-    #     try:
-    #         if AutomationSetting.driver is None:
-    #             # s = Service(executable_path=ChromeDriverManager().install())
-    #             # s = Service(ChromeDriverManager().install())
-    #             # s = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-    #             driver = webdriver.Chrome(ChromeDriverManager().install())
-    #
-    #             AutomationSetting.driver = webdriver.Chrome(service=driver)
-    #             AutomationSetting.driver.maximize_window()
-    #             logger.info("WebDriver initialized successfully.")
-    #
-    #         form_status['initialized'] = True  # Update form_status
-    #
-    #     except WebDriverException as wde:
-    #         form_status['error'] = f"Error initializing WebDriver: {wde}"
-    #         logger.error(form_status['error'])
-    #         raise
+
 
     @staticmethod
     def navigate_to(url, form_status):
@@ -1807,27 +1798,21 @@ class APISetting:
 
 
 class APIIntegrationView(APIView):
-    """This class handles sending requests and processing responses based on the provided input data and configuration."""
+    """This class handles sending requests and processing responses based on the provided input data and
+    configuration. """
 
     def post(self, request):
         logger.info("Received a new request in APIIntegrationView")
 
         try:
             data = request.data
-            print("data============================",data)
             input_data = data.get("input_data", [])
-            logger.warning(input_data)
             print("input_data----------", input_data)
             schema_config = data.get('schema_config')
             print("schema_config----------", schema_config)
             process_status = schema_config.get('status')
             print("process_status----------", process_status)
 
-            # input_data = Customize_Input.customize_input_data(input_data, schema_config,"api")
-            # print("input_data----------",input_data)
-
-            # input_data = [Inputdata_Converter.convert_to_dict(input_data)]
-            # print("input_data----------",input_data)
 
             # print(process_status)
             if not input_data or not schema_config:
@@ -1835,8 +1820,8 @@ class APIIntegrationView(APIView):
                 logger.warning(process_status)
                 return Response({"error": process_status}, status=status.HTTP_400_BAD_REQUEST)
 
-            response_data, process_status, schema_config_status = APISetting.make_request(input_data, schema_config,
-                                                                                          process_status)
+            response_data, process_status, schema_config_status = APISetting.make_request(input_data, schema_config, process_status)
+            print("process_status $$$$$$$$$$$$$$$$$$$",process_status)
             logger.info(schema_config_status)
             if process_status == "completed":
                 return Response({"response_data": response_data, "status": schema_config_status},
@@ -1865,6 +1850,7 @@ class APIIntegrationView(APIView):
             return Response({"error": process_status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
 @csrf_exempt
 def initiate_password_reset(request):
     if request.method == 'POST':
@@ -1874,15 +1860,7 @@ def initiate_password_reset(request):
 
 ########################## creating organization starts ##############################################
 ######################### organization based process alone starts ##################################
-# class OrganizationBasedProcess(APIView):
-#     """
-#     Organization based Process list
-#     """
-#
-#     def get(self, request, *args, **kwargs):
-#         processes = CreateProcess.objects.all()  # Adjust this as needed to filter processes
-#         serializer = CreateProcessResponseSerializer(processes, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
+
 class OrganizationBasedProcess(APIView):
     """
     Organization based Process list
@@ -1892,11 +1870,22 @@ class OrganizationBasedProcess(APIView):
         organization_id = kwargs.get('organization_id')
         if not organization_id:
             return Response({"detail": "Organization ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            processes = CreateProcess.objects.filter(organization_id=organization_id)  # Filter by organization_id
+            if not processes.exists():
+                logger.info(f"No processes found for organization ID {organization_id}")
+                return Response({"detail": "No processes found for the given organization ID."},
+                                status=status.HTTP_404_NOT_FOUND)
 
-        processes = CreateProcess.objects.filter(organization_id=organization_id)  # Filter by organization_id
-        serializer = CreateProcessResponseSerializer(processes, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
+            serializer = CreateProcessResponseSerializer(processes, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except CreateProcess.DoesNotExist:
+            logger.error(f"No CreateProcess objects found for organization ID {organization_id}")
+            return Response({"detail": "No processes found for the given organization ID."},
+                            status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error retrieving processes for organization ID {organization_id}: {str(e)}")
+            return Response({"error": "Failed to retrieve processes"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class OrganizationDetailsAPIView(APIView):
     """
@@ -1904,54 +1893,66 @@ class OrganizationDetailsAPIView(APIView):
     """
 
     def get(self, request, organization_id):
-        forms = FormDataInfo.objects.filter(organization=organization_id)
-        dms_records = Dms.objects.filter(organization=organization_id)
-        user_groups = UserGroup.objects.filter(organization=organization_id)
-        bots = BotSchema.objects.filter(organization=organization_id)
-        integrations = Integration.objects.filter(organization=organization_id)
+        try:
+            forms = FormDataInfo.objects.filter(organization=organization_id)
+            dms_records = Dms.objects.filter(organization=organization_id)
+            user_groups = UserGroup.objects.filter(organization=organization_id)
+            bots = BotSchema.objects.filter(organization=organization_id)
+            integrations = Integration.objects.filter(organization=organization_id)
 
-        forms_serializer = FormDataInfoSerializer(forms, many=True)
-        dms_serializer = DmsSerializer(dms_records, many=True)
-        user_groups_serializer = UserGroupSerializer(user_groups, many=True)
-        bots_serializer = BotSchemaSerializer(bots, many=True)
-        integrations_serializer = IntegrationSerializer(integrations, many=True)
+            forms_serializer = FormDataInfoSerializer(forms, many=True)
+            dms_serializer = DmsSerializer(dms_records, many=True)
+            user_groups_serializer = UserGroupSerializer(user_groups, many=True)
+            bots_serializer = BotSchemaSerializer(bots, many=True)
+            integrations_serializer = IntegrationSerializer(integrations, many=True)
 
-        bots_data = []
-        for bot in bots_serializer.data:
-            bot_data = {
-                "id": bot["id"],
-                "bot_schema_json": bot["bot_schema_json"],
-                "flow_id": bot["flow_id"],
-                "organization": bot["organization"],
+            bots_data = []
+            for bot in bots_serializer.data:
+                bot_data = {
+                    "id": bot["id"],
+                    "bot_schema_json": bot["bot_schema_json"],
+                    "flow_id": bot["flow_id"],
+                    "organization": bot["organization"],
+                }
+                bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
+                if bot_info:
+                    bot_data.update({
+                        "name": bot_info.get("name", ""),
+                        "bot_name": bot_info.get("bot_name", ""),
+                        "bot_description": bot_info.get("bot_description", ""),
+                        "bot_uid": bot_info.get("bot_uid"),
+                    })
+                bots_data.append(bot_data)
+
+
+            data = {
+                'forms': forms_serializer.data,
+                'dms': dms_serializer.data,
+                'user_groups': user_groups_serializer.data,
+                'bots': bots_data,
+                'integrations': integrations_serializer.data,
             }
-            bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
-            if bot_info:
-                bot_data.update({
-                    "name": bot_info.get("name", ""),
-                    "bot_name": bot_info.get("bot_name", ""),
-                    "bot_description": bot_info.get("bot_description", ""),
-                    "bot_uid": bot_info.get("bot_uid"),
-                })
-            bots_data.append(bot_data)
-            # if "bot" in bot:
-            #     bot_data.update({
-            #         "name": bot["bot"]["name"],
-            #         "bot_name": bot["bot"]["bot_name"],
-            #         "bot_description": bot["bot"]["bot_description"],
-            #         "bot_uid": bot["bot"].get("bot_uid"),
-            #     })
-            # bots_data.append(bot_data)
 
-        data = {
-            'forms': forms_serializer.data,
-            'dms': dms_serializer.data,
-            'user_groups': user_groups_serializer.data,
-            'bots': bots_data,
-            'integrations': integrations_serializer.data,
-        }
-
-        return Response(data, status=status.HTTP_200_OK)
-
+            return Response(data, status=status.HTTP_200_OK)
+        except FormDataInfo.DoesNotExist:
+            logger.error(f"FormDataInfo objects not found for organization ID {organization_id}")
+            return Response({"error": "Form data not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Dms.DoesNotExist:
+            logger.error(f"DMS records not found for organization ID {organization_id}")
+            return Response({"error": "DMS data not found"}, status=status.HTTP_404_NOT_FOUND)
+        except UserGroup.DoesNotExist:
+            logger.error(f"UserGroup objects not found for organization ID {organization_id}")
+            return Response({"error": "User groups not found"}, status=status.HTTP_404_NOT_FOUND)
+        except BotSchema.DoesNotExist:
+            logger.error(f"BotSchema objects not found for organization ID {organization_id}")
+            return Response({"error": "Bots not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Integration.DoesNotExist:
+            logger.error(f"Integration objects not found for organization ID {organization_id}")
+            return Response({"error": "Integrations not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving details for organization ID {organization_id}: {str(e)}")
+            return Response({"error": "Failed to retrieve organization details"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 ############### organization based details ends #######################################
 
@@ -1972,8 +1973,6 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
             if super_admin_email:
                 print("Creating or retrieving user...")  # Debugging line
                 user, created = User.objects.get_or_create(email=super_admin_email)
-                print("User object:", user)
-                print("Created:", created)
 
                 if created:
                     # Generate a unique username if needed
@@ -1994,16 +1993,7 @@ class OrganizationListCreateAPIView(generics.ListCreateAPIView):
                     logger.info(f"Super admin user created with email: {super_admin_email}")
                 else:
                     logger.info(f"Super admin user already exists with email: {super_admin_email}")
-                # Save email and role in UserData model
-                # UserData.objects.create(username=super_admin_email, role='Admin', organization=organization)
-                # print("userrrrrrrrrrrrrrr",user.email)
 
-                # Create or update UserData with user_id
-                # user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email,user_name = username)
-                # user_data.user_id = user.id  # Assuming user_id is a field in UserData to store User's ID
-                # user_data.role = 'Admin'  # Assign role as needed
-                # user_data.organization = organization  # Assign organization
-                # user_data.save()
                 user_data, created = UserData.objects.get_or_create(mail_id=super_admin_email, defaults={
                     'user_name': username,
                     # 'usergroup': usergroup,
@@ -2071,12 +2061,16 @@ class OrganizationRetrieveUpdateAPIView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         lookup_url_kwarg_id = 'pk'
         lookup_url_kwarg_code = 'org_code'
-        if lookup_url_kwarg_id in self.kwargs:
-            return self.queryset.get(pk=self.kwargs[lookup_url_kwarg_id])
-        elif lookup_url_kwarg_code in self.kwargs:
-            return self.queryset.get(org_code=self.kwargs[lookup_url_kwarg_code])
-        else:
-            raise Organization.DoesNotExist()
+        try:
+            if lookup_url_kwarg_id in self.kwargs:
+                return self.queryset.get(pk=self.kwargs[lookup_url_kwarg_id])
+            elif lookup_url_kwarg_code in self.kwargs:
+                return self.queryset.get(org_code=self.kwargs[lookup_url_kwarg_code])
+            else:
+                raise Organization.DoesNotExist()
+        except Organization.DoesNotExist:
+            logger.error(f"Organization with provided identifier not found: {self.kwargs}")
+            raise
 
     def retrieve(self, request, *args, **kwargs):
         try:
@@ -2127,18 +2121,36 @@ class CreatePermissionsView(APIView):
         ]
 
         created_permissions = []
-        for perm in permissions:
-            permission, created = Permission.objects.get_or_create(
-                code=perm['code'], defaults={'description': perm['description']}
+        try:
+            for perm in permissions:
+                permission, created = Permission.objects.get_or_create(
+                    code=perm['code'], defaults={'description': perm['description']}
+                )
+                created_permissions.append(permission)
+
+            return Response(
+                {"created_permissions": [perm.code for perm in created_permissions]},
+                status=status.HTTP_201_CREATED
             )
-            created_permissions.append(permission)
 
-        return Response(
-            {"created_permissions": [perm.code for perm in created_permissions]},
-            status=status.HTTP_201_CREATED
-        )
-
-
+        except IntegrityError as e:
+            # Handle cases where there might be a database integrity issue (e.g., unique constraint violation)
+            return Response(
+                {"error": "A database integrity error occurred.", "details": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except DatabaseError as e:
+            # Handle general database errors
+            return Response(
+                {"error": "A database error occurred.", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            # Catch any other unexpected exceptions
+            return Response(
+                {"error": "An unexpected error occurred.", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 ###################### create user permission ends ##############################################
 
 
@@ -2152,8 +2164,21 @@ class UserGroupListCreateAPIView(generics.ListCreateAPIView):
         org_id = self.kwargs['org_id']  # Retrieve org_id from URL parameters
         if org_id is None:
             return UserData.objects.none()  # Return an empty queryset if org_id is not provided
-        queryset = UserGroup.objects.filter(organization_id=org_id)
-        return queryset
+        try:
+            queryset = UserGroup.objects.filter(organization_id=org_id)
+            # Check if the queryset is empty
+            if not queryset.exists():
+                raise NotFound(detail='No user groups found for the provided organization ID.')
+            return queryset
+        except ObjectDoesNotExist:
+            # Handle cases where the organization does not exist
+            raise NotFound(detail='The organization does not exist.')
+
+        except Exception as e:
+            # Log the exception details for debugging purposes
+            print(f"Unexpected error: {str(e)}")
+            # Raise a generic exception
+            raise NotFound(detail='An unexpected error occurred.')
 
     def create(self, request, *args, **kwargs):
         try:
@@ -2176,7 +2201,29 @@ class UserGroupRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIVie
 
     def get_queryset(self):
         org_id = self.kwargs['org_id']
-        return UserGroup.objects.filter(organization_id=org_id)
+        if org_id is None:
+            # If 'org_id' is not provided, raise a validation error
+            raise ValidationError('Organization ID is required.')
+        try:
+            # Try to filter the queryset by organization_id
+            queryset = UserGroup.objects.filter(organization_id=org_id)
+
+            # Check if the queryset is empty
+            if not queryset.exists():
+                raise NotFound('No user groups found for the provided organization ID.')
+
+            return queryset
+
+        except ObjectDoesNotExist:
+            # Handle cases where the organization does not exist
+            raise NotFound('The organization does not exist.')
+
+        except Exception as e:
+            # Log the exception details for debugging purposes
+            print(f"Unexpected error: {str(e)}")
+            # Raise a generic not found exception
+            raise NotFound('An unexpected error occurred.')
+        # return UserGroup.objects.filter(organization_id=org_id)
 
     def update(self, request, *args, **kwargs):
         try:
@@ -2252,282 +2299,6 @@ class PasswordResetConfirmView(generics.UpdateAPIView):
 ########################## Password reset function ends ############################################
 
 
-######################### API for OCR Components Starts ###################################
-
-# class PancardExtractionSetting:
-#
-#     @staticmethod
-#     def detect_objects_on_image(image, obj_det=None):
-#         model_path = os.path.join(settings.BASE_DIR, 'static/pancard_model/New_result_08_07_24/weights/best.pt')
-#         model = YOLO(model_path)
-#         results = model.predict(image)
-#         result = results[0]
-#         output = []
-#         for box in result.boxes:
-#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-#             class_id = box.cls[0].item()
-#             prob = round(box.conf[0].item(), 2)
-#             if obj_det is None or obj_det == result.names[class_id]:
-#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
-#         logger.info(f"Object detection completed on image with {len(output)} objects.")
-#         return output
-#
-#     @staticmethod
-#     def draw_boxes(image, boxes):
-#         draw = ImageDraw.Draw(image)
-#         for box in boxes:
-#             x1, y1, x2, y2, label, prob = box
-#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-#             text = f"{label} {prob:.2f}"
-#             draw.text((x1, y1 - 10), text, fill="red")
-#         logger.info("Bounding boxes drawn on image.")
-#         return image
-#
-#     @staticmethod
-#     # def crop_and_extract_text(image, boxes):
-#     #     reader = easyocr.Reader(['en'])
-#     #     extracted_texts = {}
-#     #     for box in boxes:
-#     #         x1, y1, x2, y2, label, prob = box
-#     #         cropped_image = image.crop((x1, y1, x2, y2))
-#     #         cropped_image = cropped_image.convert('RGB')
-#     #         img_array = np.array(cropped_image)
-#     #         try:
-#     #             text = reader.readtext(img_array, detail=0, paragraph=True)
-#     #             extracted_text = " ".join(text).strip()
-#     #             if label in extracted_texts:
-#     #                 extracted_texts[label] += " " + extracted_text
-#     #             else:
-#     #                 extracted_texts[label] = extracted_text
-#     #         except Exception as e:
-#     #             logger.error(f"Error extracting text from box: {str(e)}")
-#     #             return {"error": str(e)}
-#     #     logger.info("Text extraction completed.")
-#
-#     #     return extracted_texts
-#     @staticmethod
-#     def crop_and_extract_text(image, boxes):
-#         reader = easyocr.Reader(['en'])
-#         extracted_texts = {}
-#         field_mappings = {
-#             "IT": "",
-#             "IT_emblem": "",  # Assuming you want to remove this field
-#             "panHolder_Name": "Name",
-#             "panHolder_photo": "",  # Assuming you want to remove this field
-#             "panHolder_Number": "Number",
-#             "panHolder_CO": "Father name",
-#             "panHolder_Signature": "",  # Assuming you want to remove this field
-#             "panHolder_DOB": "DOB"
-#         }
-#
-#         for box in boxes:
-#             x1, y1, x2, y2, label, prob = box
-#             cropped_image = image.crop((x1, y1, x2, y2))
-#             cropped_image = cropped_image.convert('RGB')
-#             img_array = np.array(cropped_image)
-#
-#             try:
-#                 text = reader.readtext(img_array, detail=0, paragraph=True)
-#                 extracted_text = " ".join(text).strip()
-#
-#                 # Map label to desired field name and add to extracted_texts
-#                 if label in field_mappings and field_mappings[label]:
-#                     field_name = field_mappings[label]
-#                     if field_name in extracted_texts:
-#                         extracted_texts[field_name] += " " + extracted_text
-#                     else:
-#                         extracted_texts[field_name] = extracted_text
-#
-#             except Exception as e:
-#                 logger.error(f"Error extracting text from box: {str(e)}")
-#                 return {"error": str(e)}
-#
-#         logger.info("Text extraction completed.")
-#         return extracted_texts
-#
-#
-# class PancardExtractionView(APIView):
-#     # parser_classes = [MultiPartParser, FormParser]
-#
-#     def post(self, request, *args, **kwargs):
-#         files = request.FILES.getlist('file')
-#         if not files:
-#             return Response({"error": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
-#
-#         all_extracted_texts = {}
-#         for file in files:
-#             try:
-#                 image = Image.open(file)
-#                 detected_objects = PancardExtractionSetting.detect_objects_on_image(image)
-#                 image_with_boxes = PancardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-#                 extracted_texts = PancardExtractionSetting.crop_and_extract_text(image, detected_objects)
-#                 all_extracted_texts[file.name] = extracted_texts
-#             except Exception as e:
-#                 logger.error(f"Error processing file {file.name}: {str(e)}")
-#
-#         response_data = {
-#             "extracted_info": all_extracted_texts,
-#         }
-#         logger.info("succesfully extracted: {response_data}")
-#         return Response(response_data, status=status.HTTP_200_OK)
-#
-#
-# class AadharcardExtractionSetting:
-#
-#     @staticmethod
-#     def detect_objects_on_image(image, obj_det=None):
-#         model_path = os.path.join(settings.BASE_DIR, 'static/aadharcard_model/weights/best.pt')
-#         model = YOLO(model_path)
-#         results = model.predict(image)
-#         result = results[0]
-#         output = []
-#         for box in result.boxes:
-#             x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-#             class_id = box.cls[0].item()
-#             prob = round(box.conf[0].item(), 2)
-#             if obj_det is None or obj_det == result.names[class_id]:
-#                 output.append([x1, y1, x2, y2, result.names[class_id], prob])
-#         logger.info(f"Object detection completed on image with {len(output)} objects.")
-#         return output
-#
-#     @staticmethod
-#     def draw_boxes(image, boxes):
-#         draw = ImageDraw.Draw(image)
-#         for box in boxes:
-#             x1, y1, x2, y2, label, prob = box
-#             draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-#             text = f"{label} {prob:.2f}"
-#             draw.text((x1, y1 - 10), text, fill="red")
-#         logger.info("Bounding boxes drawn on image.")
-#         return image
-#
-#     @staticmethod
-#     def crop_and_extract_text(image, boxes):
-#         reader = easyocr.Reader(['en'])
-#         extracted_texts = {}
-#         for box in boxes:
-#             x1, y1, x2, y2, label, prob = box
-#             cropped_image = image.crop((x1, y1, x2, y2))
-#             cropped_image = cropped_image.convert('RGB')
-#             img_array = np.array(cropped_image)
-#             try:
-#                 text = reader.readtext(img_array, detail=0, paragraph=True)
-#                 extracted_text = " ".join(text).strip()
-#                 if label in extracted_texts:
-#                     extracted_texts[label] += " " + extracted_text
-#                 else:
-#                     extracted_texts[label] = extracted_text
-#             except Exception as e:
-#                 logger.error(f"Error extracting text from box: {str(e)}")
-#                 return {"error": str(e)}
-#         logger.info("Text extraction completed.")
-#         return extracted_texts
-#
-#
-# class AadharcardExtractionView(APIView):
-#     # parser_classes = [MultiPartParser, FormParser]
-#
-#     def post(self, request, *args, **kwargs):
-#         files = request.FILES.getlist('file')
-#         if not files:
-#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
-#
-#         all_extracted_texts = {}
-#         for file in files:
-#             try:
-#                 image = Image.open(file)
-#                 detected_objects = AadharcardExtractionSetting.detect_objects_on_image(image)
-#                 image_with_boxes = AadharcardExtractionSetting.draw_boxes(image.copy(), detected_objects)
-#                 extracted_texts = AadharcardExtractionSetting.crop_and_extract_text(image, detected_objects)
-#                 all_extracted_texts[file.name] = extracted_texts
-#             except Exception as e:
-#                 logger.error(f"Error processing file {file.name}: {str(e)}")
-#
-#         response_data = {
-#             "extracted_info": all_extracted_texts,
-#         }
-#         logger.info("successfully extracted: {response_data}")
-#         return Response(response_data, status=status.HTTP_200_OK)
-#
-#
-# class OCRExtractionSetting:
-#     @staticmethod
-#     def extract_text(input_file_name):
-#         logger.info(f"Starting text extraction from {input_file_name}")
-#         reader = PdfReader(input_file_name)
-#         number_of_pages = len(reader.pages)
-#         all_text = []
-#
-#         for i in range(number_of_pages):
-#             page = reader.pages[i]
-#             text = page.extract_text()
-#             all_text.append(text)
-#             if text:
-#                 logger.info(f"Text extracted from page {i}")
-#             else:
-#                 logger.warning(f"No text found on page {i}")
-#
-#         return all_text
-#
-#     @staticmethod
-#     def editable_pdf(input_file_name, output_file_name):
-#         if os.path.isfile(input_file_name):
-#             logger.info(f"Creating editable PDF: {output_file_name}")
-#             ocrmypdf.ocr(input_file_name, output_file_name, skip_text=True)
-#             if os.path.isfile(output_file_name):
-#                 logger.info(f"Editable PDF created: {output_file_name}")
-#             else:
-#                 logger.error(f"Failed to create editable PDF: {output_file_name}")
-#         else:
-#             logger.error(f"Input file not found: {input_file_name}")
-#
-#         return output_file_name
-#
-#
-# class OCRExtractionView(APIView):
-#     # parser_classes = [MultiPartParser, FormParser]
-#
-#     def post(self, request, *args, **kwargs):
-#         files = request.FILES.getlist('file')
-#         if not files:
-#             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
-#
-#         all_extracted_texts = {}
-#         for file in files:
-#             try:
-#                 # Save the uploaded file to a temporary file
-#                 with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-#                     for chunk in file.chunks():
-#                         temp_file.write(chunk)
-#                     input_file_name = temp_file.name
-#
-#                 output_file_name = f"{os.path.splitext(input_file_name)[0]}_output.pdf"
-#
-#                 text = OCRExtractionSetting.extract_text(input_file_name)
-#                 if not text:
-#                     logger.info(f"No text found in {input_file_name}, converting to editable PDF.")
-#                     edit_file_name = OCRExtractionSetting.editable_pdf(input_file_name, output_file_name)
-#                     text = OCRExtractionSetting.extract_text(edit_file_name)
-#
-#                 all_extracted_texts[file.name] = text
-#                 logger.info(f"Text successfully extracted from {file.name}")
-#             except Exception as e:
-#                 logger.error(f"Error processing file {file.name}: {str(e)}")
-#             finally:
-#                 if os.path.exists(input_file_name):
-#                     os.remove(input_file_name)
-#                 if os.path.exists(output_file_name):
-#                     os.remove(output_file_name)
-#
-#         response_data = {
-#             "extracted_info": all_extracted_texts,
-#         }
-#
-#         logger.info(f"Extraction completed successfully: {response_data}")
-#         return Response(response_data, status=status.HTTP_200_OK)
-
-
-######################### API for OCR Components Ends ###################################
 
 
 ######################## API for DMS components starts ##################################

@@ -141,7 +141,7 @@ class FilledFormData(models.Model):
     # user_groups = models.ForeignKey('custom_components.UserGroup', on_delete=models.CASCADE,
     #                                      related_name='usergroup_filled_form_data', blank=True,null=True)
     user_groups = models.ManyToManyField('custom_components.UserGroup',
-                                       related_name='usergroup_filled_form_data', blank=True,null=True)
+                                       related_name='usergroup_filled_form_data', blank=True)
     def __str__(self):
         return str(self.id)
 

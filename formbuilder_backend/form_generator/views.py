@@ -6,47 +6,25 @@ import threading
 from sqlite3 import IntegrityError
 
 import requests
-from django.db import transaction
-from django.urls import reverse
-from django.utils.crypto import get_random_string
+
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from .serializer import *
-from rest_framework.response import Response
+
 from rest_framework.decorators import api_view, authentication_classes  # function based api_view decorator
-from rest_framework.views import APIView  # class based APIView
-from rest_framework import status  # status codes
-from django.core.mail import send_mail  # mail service
-from django.conf import settings  # import host user from settings.py for mail service
+
 from django.contrib.auth import authenticate, login  # user authentication
-from django.core.exceptions import ObjectDoesNotExist  # error handling
-from django.shortcuts import redirect  # redirect
+
 import traceback
 # pdf imports bgn
 import os
-import json
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
 from .models import FilledFormData  # Import your model
-from reportlab.pdfgen import canvas
-from reportlab.lib import colors, styles
-from reportlab.graphics.shapes import Rect
-from reportlab.lib.colors import Color, black, blue, red, darkblue, midnightblue, navy
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Image, Paragraph, PageTemplate, Frame
 from django.http import HttpResponse, FileResponse, JsonResponse
-from reportlab.lib.styles import getSampleStyleSheet
-from django.core.files.base import ContentFile
-# pdf imports end
-import json
-from django.core.mail import EmailMessage  # mail service 2 for file attachment
-
 from rest_framework.authtoken.models import Token  # login_authentication
 from django.contrib.auth.mixins import LoginRequiredMixin  # login required decorator
-
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-
 from datetime import datetime, date, time, timedelta  # add date in created date and eta date comparison
 from django.shortcuts import get_object_or_404
 # cron schedule imports bgn
@@ -54,17 +32,12 @@ from django.shortcuts import get_object_or_404
 # import time
 import schedule
 # cron schedule imports end
-
-
-
 from custom_components.models import Bot, BotSchema, BotData, Integration, IntegrationDetails, Organization, UserGroup, \
     Ocr, Dms, Dms_data, Ocr_Details
 from custom_components.serializer import IntegrationDetailsSerializer, BotDataSerializer, OrganizationSerializer, \
     OcrSerializer, Ocr_DetailsSerializer, DmsDataSerializer
 import json
-
 import operator
-
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -76,8 +49,11 @@ from .models import UserData
 from .serializer import UserDataSerializer
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-
+from rest_framework.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import IntegrityError, transaction
 import logging  # log messages
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,104 +97,133 @@ class FormGeneratorAPIView(APIView):
         organization_id = data.get('organization')
         user_permissions = data.get('permissions')
 
-
         try:
             organization = Organization.objects.get(id=organization_id)
         except Organization.DoesNotExist:
             return Response({"error": "Organization not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        form_data_instance, created = FormDataInfo.objects.update_or_create(
-            organization=organization,
-            form_name=form_name,  # Add form_name to the query parameters
-            defaults={
-                'form_json_schema': form_json_schema,
-                'form_description': form_description
-            }
-        )
-
-        if user_permissions is not None:
-            # Clear existing permissions to avoid duplicates
-            FormPermission.objects.filter(form=form_data_instance).delete()
-
-            # Create or update FormPermissions
-            for permission in user_permissions:
-                user_group_id = permission['user_group']
-                read = permission['read']
-                write = permission['write']
-                edit = permission['edit']
-
-                try:
-                    user_group = UserGroup.objects.get(id=user_group_id)
-                except UserGroup.DoesNotExist:
-                    return Response({"error": f"User group with ID {user_group_id} not found"},
-                                    status=status.HTTP_404_NOT_FOUND)
-
-                FormPermission.objects.create(
-                    form=form_data_instance,
-                    user_group=user_group,
-                    read=read,
-                    write=write,
-                    edit=edit
+        except Exception as e:
+            return Response({"error": f"Error retrieving organization: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            with transaction.atomic():
+                form_data_instance, created = FormDataInfo.objects.update_or_create(
+                    organization=organization,
+                    form_name=form_name,  # Add form_name to the query parameters
+                    defaults={
+                        'form_json_schema': form_json_schema,
+                        'form_description': form_description
+                    }
                 )
 
-        return Response({"message": "Form data and permissions saved successfully"}, status=status.HTTP_201_CREATED)
+                if user_permissions is not None:
+                    # Clear existing permissions to avoid duplicates
+                    FormPermission.objects.filter(form=form_data_instance).delete()
+
+                    # Create or update FormPermissions
+                    for permission in user_permissions:
+                        user_group_id = permission['user_group']
+                        read = permission['read']
+                        write = permission['write']
+                        edit = permission['edit']
+
+                        try:
+                            user_group = UserGroup.objects.get(id=user_group_id)
+                        except UserGroup.DoesNotExist:
+                            return Response({"error": f"User group with ID {user_group_id} not found"},
+                                            status=status.HTTP_404_NOT_FOUND)
+
+                        FormPermission.objects.create(
+                            form=form_data_instance,
+                            user_group=user_group,
+                            read=read,
+                            write=write,
+                            edit=edit
+                        )
+
+            return Response({"message": "Form data and permissions saved successfully"}, status=status.HTTP_201_CREATED)
+        except IntegrityError as e:
+            return Response({"error": f"Database integrity error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def put(self, request, organization_id, form_id):
         data = request.data
-
 
         try:
             form_data_instance = FormDataInfo.objects.get(pk=form_id, organization_id=organization_id)
         except FormDataInfo.DoesNotExist:
             return Response({"error": "Form data not found for the given organization and form ID"},
                             status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error retrieving Forms: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         form_name = data.get('form_name', form_data_instance.form_name)
         form_json_schema = data.get('form_json_schema', form_data_instance.form_json_schema)
         form_description = data.get('form_description', form_data_instance.form_description)
         organization_id = data.get('organization', form_data_instance.organization.id)
-        user_permissions = data.get('permissions', None)
+        user_permissions = data.get('permissions', [])
+        try:
+            organization = Organization.objects.get(id=organization_id)
+        except Organization.DoesNotExist:
+            return Response({"error": "Organization not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error retrieving organization: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            with transaction.atomic():
+                form_data_instance.form_name = form_name
+                form_data_instance.form_json_schema = form_json_schema
+                form_data_instance.form_description = form_description
+                form_data_instance.organization = organization
+                form_data_instance.save()
 
-        organization = Organization.objects.get(id=organization_id)
+                if user_permissions is not None:
+                    # Clear existing permissions to avoid duplicates
+                    FormPermission.objects.filter(form=form_data_instance).delete()
 
-        form_data_instance.form_name = form_name
-        form_data_instance.form_json_schema = form_json_schema
-        form_data_instance.form_description = form_description
-        form_data_instance.organization = organization
-        form_data_instance.save()
+                    # Create or update FormPermissions
+                    for permission in user_permissions:
+                        user_group_id = permission['user_group']
+                        read = permission['read']
+                        write = permission['write']
+                        edit = permission['edit']
 
-        if user_permissions is not None:
-            # Clear existing permissions to avoid duplicates
-            FormPermission.objects.filter(form=form_data_instance).delete()
+                        user_group = UserGroup.objects.get(id=user_group_id)
 
-            # Create or update FormPermissions
-            for permission in user_permissions:
-                user_group_id = permission['user_group']
-                read = permission['read']
-                write = permission['write']
-                edit = permission['edit']
+                        FormPermission.objects.create(
+                            form=form_data_instance,
+                            user_group=user_group,
+                            read=read,
+                            write=write,
+                            edit=edit
+                        )
 
-                user_group = UserGroup.objects.get(id=user_group_id)
-
-                FormPermission.objects.create(
-                    form=form_data_instance,
-                    user_group=user_group,
-                    read=read,
-                    write=write,
-                    edit=edit
-                )
-
-        return Response({"message": "Form data and permissions updated successfully"}, status=status.HTTP_200_OK)
-
+            return Response({"message": "Form data and permissions updated successfully"}, status=status.HTTP_200_OK)
+        except IntegrityError as e:
+            return Response({"error": f"Database integrity error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     def delete(self, request, organization_id, form_id):
         try:
             form_data_instance = FormDataInfo.objects.get(pk=form_id, organization_id=organization_id)
-            form_data_instance.delete()
-            return Response({"message": "Form data and permissions deleted successfully"},
-                            status=status.HTTP_204_NO_CONTENT)
         except FormDataInfo.DoesNotExist:
             return Response({"error": "Form data not found for the given organization and form ID"},
                             status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error retrieving form data: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            form_data_instance.delete()
+            return Response({"message": "Form data and permissions deleted successfully"},
+                            status=status.HTTP_204_NO_CONTENT)
+        except IntegrityError as e:
+            return Response({"error": f"Database integrity error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UserFilledDataView(APIView):
@@ -227,62 +232,55 @@ class UserFilledDataView(APIView):
     user filled data get,post,update and delete function
     """
 
-
-
     def get(self, request, organization_id=None, pk=None):
         """
         List all user data, retrieve particular data, or filter by organization.
         """
-        if organization_id and pk:
-            filled_data = FilledFormData.objects.get(pk=pk, organization=organization_id)
-            filled_data_list = [filled_data]
-        elif organization_id:
-            filled_data_list = FilledFormData.objects.filter(organization=organization_id)
-        elif pk:
-            filled_data = FilledFormData.objects.get(pk=pk)
-            filled_data_list = [filled_data]
-        else:
-            filled_data_list = FilledFormData.objects.all()
+        try:
+            if organization_id and pk:
+                filled_data = FilledFormData.objects.get(pk=pk, organization=organization_id)
+                filled_data_list = [filled_data]
+            elif organization_id:
+                filled_data_list = FilledFormData.objects.filter(organization=organization_id)
+            elif pk:
+                filled_data = FilledFormData.objects.get(pk=pk)
+                filled_data_list = [filled_data]
+            else:
+                filled_data_list = FilledFormData.objects.all()
 
-        data = []
-        for filled_data in filled_data_list:
-            case = filled_data.caseId
-            filled_data_info = FilledDataInfoSerializer(filled_data).data
-            filled_data_info['created_on'] = case.created_on
-            filled_data_info['updated_on'] = case.updated_on
-            filled_data_info['process_name'] = filled_data.processId.process_name
-            filled_data_info['user_groups'] = list(filled_data.user_groups.values_list('id', flat=True))
-            #filled_data_info['user_groups'] = filled_data.user_groups.id if filled_data.user_groups else None
-            data.append(filled_data_info)
+            data = []
+            for filled_data in filled_data_list:
+                case = filled_data.caseId
+                filled_data_info = FilledDataInfoSerializer(filled_data).data
+                filled_data_info['created_on'] = case.created_on
+                filled_data_info['updated_on'] = case.updated_on
+                filled_data_info['process_name'] = filled_data.processId.process_name
+                filled_data_info['user_groups'] = list(filled_data.user_groups.values_list('id', flat=True))
+                # filled_data_info['user_groups'] = filled_data.user_groups.id if filled_data.user_groups else None
+                data.append(filled_data_info)
 
-        return Response(data if len(data) > 1 else data[0])
-
-    # def get(self, request, organization_id=None, pk=None):
-    #     """
-    #     List all user data, retrieve particular data, or filter by organization.
-    #     """
-    #     if organization_id and pk:
-    #         filled_data = FilledFormData.objects.get(pk=pk, organization=organization_id)
-    #     elif organization_id:
-    #         filled_data = FilledFormData.objects.filter(organization=organization_id)
-    #     elif pk:
-    #         filled_data = FilledFormData.objects.get(pk=pk)
-    #     else:
-    #         filled_data = FilledFormData.objects.all()
-    #
-    #     serializer = FilledDataInfoSerializer(filled_data, many=True if not pk else False)
-    #     return Response(serializer.data)
+            return Response(data if len(data) > 1 else data[0])
+        except FilledFormData.DoesNotExist:
+            return Response({"error": "Filled form data not found."}, status=status.HTTP_404_NOT_FOUND)
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "An unexpected error occurred.", "details": str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):  # store ths data in db
-
+        """
+        List all user data, retrieve particular data, or filter by organization for Process Engine.
+        """
         if request.method == 'POST':
             try:
                 # Extract jsonData, formId, organization
                 json_data_str = request.POST.get('jsonData', '[]')
-
                 form_id = request.POST.get('formId')
-
                 organization_id = request.POST.get('organization')
+                if not form_id or not organization_id:
+                    return JsonResponse({'error': 'formId and organization are required fields'},
+                                        status=status.HTTP_400_BAD_REQUEST)
 
                 json_data = json.loads(json_data_str)
 
@@ -304,49 +302,42 @@ class UserFilledDataView(APIView):
                     file = None
                     for field_name, uploaded_file in request.FILES.items():
                         file = uploaded_file
-                        print("file", type(file))
+
                         break  # Assuming only one file is expected; remove break if multiple files need handling
 
                     # Fetch drive types and configurations for the specific organization
                     dms_entries = Dms.objects.filter(organization=organization)
+                    if not dms_entries.exists():
+                        return JsonResponse({'error': 'DMS configuration not found for the organization'},
+                                            status=status.HTTP_404_NOT_FOUND)
 
                     # drive_types = list(dms_entries.values_list('drive_types', flat=True))
                     drive_types = dms_entries.first().drive_types if dms_entries.exists() else {}
-
                     configurations = dms_entries.first().config_details_schema
-                    print("configurations type", type(configurations))
                     # configurations.update("drive_type": drive_types)
                     configurations['drive_types'] = drive_types
                     # configurations['s3_bucket_metadata'] = drive_types
                     print("configurations-------------2", configurations)
 
                     metadata = {'form_id': form_id, 'organization_id': str(organization_id)}
-                    # Send file and additional data to another API if file is available
-                    # Extract the file from the request
                     configurations['metadata'] = json.dumps(metadata)
                     print("configurations-------------------3", configurations)
-                    # data_config = {
-                    #
-                    #     'drive_types': drive_types,
-                    #     'bucket_name': bucket_name,
-                    #     'aws_access_key_id': access_key_id,
-                    #     'aws_secret_access_key': aws_secret_access_key,
-                    #     's3_bucket_metadata' : json.dumps(s3_bucket_metadata)
-                    #
-                    #     # 'configurations': configurations
-                    # }
+
                     # Prepare the file for the request
                     files = {'files': (file.name, file.file, file.content_type)}
 
-                    print("inside file")
-                    # external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
-                    external_api_url = f'{settings.BASE_URL}/custom_components/FileUploadView/'
-                    response = requests.post(
-                        external_api_url,
-                        data=configurations, files=files
+                    try:
+                        external_api_url = f'{settings.BASE_URL}/custom_components/FileUploadView/'
+                        response = requests.post(
+                            external_api_url,
+                            data=configurations, files=files
 
-                    )
-                    print("response", response)
+                        )
+                        print("response", response)
+                        response.raise_for_status()
+                    except requests.RequestException as e:
+                        return JsonResponse({'error': f'Error sending file to external API: {str(e)}'},
+                                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 # Save the data to the database
                 form_data = FilledFormData(
                     data_json=json_data,
@@ -357,176 +348,113 @@ class UserFilledDataView(APIView):
                 form_data.save()
 
                 return JsonResponse({'status': 'success', 'form_data_id': form_data.id})
+            except json.JSONDecodeError:
+                return JsonResponse({'error': 'Invalid JSON format in jsonData'}, status=status.HTTP_400_BAD_REQUEST)
+            except KeyError:
+                return JsonResponse({'error': 'Missing required fields in data'}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return JsonResponse({'error': f'An unexpected error occurred: {str(e)}'},
+                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            except (json.JSONDecodeError, KeyError) as e:
-                return JsonResponse({'error': 'Invalid data or missing fields'}, status=400)
-
-        return JsonResponse({'error': 'Invalid request method'}, status=405)
-        # serializer = FilledDataInfoSerializer(data=request.data)
-        # if serializer.is_valid():
-        #     serializer.save()
-        #     return Response(serializer.data)
-        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        # if serializer.is_valid():
-        #     instance = serializer.save()
+        #     except (json.JSONDecodeError, KeyError) as e:
+        #         return JsonResponse({'error': 'Invalid data or missing fields'}, status=400)
         #
-        #     # PDF generation begins here
-        #     # Form data
-        #     user_data_form_id = FilledFormData.objects.filter(pk=instance.id).values('form_id')
-        #     form_id = user_data_form_id[0]['form_id']
-        #     us = FormDataInfo.objects.get(pk=form_id)
-        #
-        #     data = {
-        #         'heading': us.heading,
-        #         'subheading': us.subheading,
-        #         'logo': us.logo,
-        #         'menu_name': us.menu_name,
-        #         'form_id': form_id,
-        #         'form_name': us.form_name
-        #     }
-        #
-        #     # Filled form data
-        #     user_data = FilledFormData.objects.get(pk=instance.id)
-        #     try:
-        #         json_data = user_data.data_json  # Parse JSON data as a dictionary
-        #     except json.JSONDecodeError:
-        #         return Response({'detail': 'Invalid JSON data'}, status=status.HTTP_400_BAD_REQUEST)
-        #
-        #     # Generate the PDF
-        #     response = BytesIO()
-        #
-        #     # Create a PDF document
-        #     # Create a canvas object
-        #     pdf = canvas.Canvas(response, pagesize=letter)
-        #
-        #     # constants for layout
-        #     page_width = letter[0]
-        #     page_height = letter[1]
-        #     top_nav_height = 150
-        #     bottom_nav_height = 40
-        #     logo_width = 220
-        #     logo_height = 220
-        #     margin = 15
-        #     max_text_width = page_width - (2 * margin)
-        #
-        #     #  background color bgn
-        #     # top nav bgn
-        #     x = 0  # X-coordinate of the top-left corner
-        #     y = 650  # Y-coordinate of the top-left corner (adjust to align the top)
-        #     width = 700  # Width of the rectangle
-        #     height = 200
-        #     pdf.setFillColor(midnightblue)
-        #     pdf.rect(0, y, width, height, fill=True, stroke=False)
-        #     # top nav end
-        #
-        #     #  bottom nav bgn
-        #     x = 0  # X-coordinate of the top-left corner
-        #     y = 0  # Y-coordinate of the top-left corner (adjust to align the top)
-        #     width = 700  # Width of the rectangle
-        #     height = 40  # Height of the rectangle
-        #     pdf.setFillColor(midnightblue)
-        #     pdf.rect(x, y, width, height, fill=True, stroke=False)
-        #     #  bottom nav end
-        #     #  background color end
-        #
-        #     # image file path
-        #     image_path = us.logo
-        #
-        #     # image in the top-left corner
-        #     pdf.drawImage(image_path, margin, page_height - top_nav_height - 30, width=logo_width, height=logo_height,
-        #                   preserveAspectRatio=True, mask='auto')
-        #
-        #     # Add heading and subheading
-        #     pdf.setFont("Helvetica-Bold", 14)
-        #     pdf.setFillColor(colors.white)
-        #     pdf.drawString(300, page_height - top_nav_height + 80, us.heading)
-        #
-        #     pdf.setFont("Helvetica", 12)
-        #     pdf.setFillColor(colors.white)
-        #     pdf.drawString(300, page_height - top_nav_height + 60, us.subheading)
-        #
-        #     # pdf.setFont("Helvetica", 11)
-        #     # pdf.setFillColor(colors.white)
-        #     # pdf.drawString(300, page_height - top_nav_height + 100, ' REG ID : ' + str(instance.id))
-        #
-        #     # list to hold table data
-        #     table_data = [['REG ID : ' + str(instance.id)]]
-        #
-        #     # JSON data to the table
-        #     for key, value in json_data.items():
-        #         table_data.append([key, f': {value}'])
-        #
-        #     # Create the table
-        #     table = Table(table_data)
-        #
-        #     # table style
-        #     table_style = TableStyle([
-        #         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        #         ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        #         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        #         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        #         ('FONTSIZE', (0, 0), (-1, 0), 15),
-        #         ('BOTTOMPADDING', (0, 0), (-2, 0), 10),
-        #         ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        #         ('GRID', (2, 0), (0, 0), 0, colors.lightgrey),
-        #     ])
-        #
-        #     table.setStyle(table_style)
-        #
-        #     # Draw table
-        #     table.wrapOn(pdf, max_text_width, page_height - top_nav_height - 200)
-        #     table.drawOn(pdf, margin, page_height - top_nav_height - 210)
-        #
-        #     # form name with a custom font size
-        #     pdf.setFont("Helvetica", 15)  # font and size
-        #     pdf.setFillColor(colors.white)
-        #     pdf.drawString(230, 15, us.form_name)
-        #
-        #     # Save PDF
-        #     pdf.save()
-        #
-        #     # pdf downloader bgn
-        #     pdf_file_path = os.path.join(f"{data['form_name']}.pdf")
-        #     pdf_content = response.getvalue()
-        #     with open(pdf_file_path, 'wb') as pdf_file:
-        #         pdf_file.write(pdf_content)
-        #     # pdf downloader end
-        #     # PDF generation ends here
-        #
-        #     # email bgn
-        #     # email content
-        #     subject = 'New Form Submission Received!'
-        #     message = 'Hi, Thanks for getting in touch with MHA. ' \
-        #               'Attached is a copy of the online form you submitted with the registration ID.' \
-        #               'Please use the registration id for any further communication.' \
-        #               'Thanks,' \
-        #               ' MHA Admin Team'
-        #     email_from = settings.EMAIL_HOST_USER
-        #     recipient_email = 'mohansaravanan111@gmail.com'
-        #
-        #     # email Message with the PDF as an attachment
-        #     email = EmailMessage(subject, message, email_from, [recipient_email])
-        #     email.attach_file(pdf_file_path)  # Attach the PDF file
-        #     email.send()  # Send the email
-        #     # email end
-        #
-        #     # Return the PDF as a response
-        #     response.seek(0)
-        #     return FileResponse(response, content_type='application/pdf')
-        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # return JsonResponse({'error': 'Invalid request method'}, status=405)
 
     def put(self, request, pk):  # edit the particular filled form
-        filled_data = FilledFormData.objects.get(pk=pk)
+        """
+            Edit all user filled data
+        """
+        try:
+            filled_data = FilledFormData.objects.get(pk=pk)
+        except FilledFormData.DoesNotExist:
+            return Response({'error': 'Filled form data not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Error retrieving filled form data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         serializer = FilledDataInfoSerializer(filled_data, data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                serializer.save()
+                return Response(serializer.data)
+            except ValidationError as e:
+                return Response({'error': f'Validation error: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({'error': f'Error saving filled form data: {str(e)}'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):  # delete the particular filled form
-        filled_data = FilledFormData.objects.get(pk=pk)
-        filled_data.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            filled_data = FilledFormData.objects.get(pk=pk)
+        except FilledFormData.DoesNotExist:
+            return Response({'error': 'Filled form data not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Error retrieving filled form data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            filled_data.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({'error': f'Error deleting filled form data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# organization based filled data used for form components alone
+class FilledFormDataView(APIView):
+
+    def get(self, request, organization_id=None, form_id=None, pk=None):
+        """
+        List all filled forms based on organization and form ID or retrieve a specific filled form by its ID.
+        Only include forms that are not tagged with a process or case.
+        """
+        try:
+            if organization_id and form_id and pk:
+                try:
+                    filled_data = FilledFormData.objects.filter(pk=pk, organization=organization_id, formId=form_id,
+                                                                processId__isnull=True,
+                                                                caseId__isnull=True).first()
+                    filled_data_list = [filled_data] if filled_data else []
+                except FilledFormData.DoesNotExist:
+                    return Response({"detail": "Filled form not found."}, status=status.HTTP_404_NOT_FOUND)
+            # Retrieve filled forms based on organization and form ID
+            elif organization_id and form_id:
+                filled_data_list = FilledFormData.objects.filter(organization=organization_id, formId=form_id,
+                                                                 processId__isnull=True,
+                                                                 caseId__isnull=True)
+            # Retrieve all filled forms not tagged with a process or case
+            else:
+                filled_data_list = FilledFormData.objects.filter(processId__isnull=True, caseId__isnull=True)
+
+            data = []
+            for filled_data in filled_data_list:
+                filled_data_info = {
+                    'id': filled_data.id,
+                    'formId': filled_data.formId,
+                    'data_json': filled_data.data_json,
+                    'created_at': filled_data.created_at,
+                    'updated_at': filled_data.updated_at,
+                    'organization': filled_data.organization.id,
+                    'user_groups': list(filled_data.user_groups.values_list('id', flat=True)),
+                }
+                data.append(filled_data_info)
+
+            if not data:
+                return Response({"detail": "No filled forms found."}, status=404)
+
+            return Response(data, status=status.HTTP_200_OK)
+        except ObjectDoesNotExist:
+            return Response({"error": "Invalid ID provided or resource does not exist."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({"error": f"Validation error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # except Exception as e:
+        #     return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -553,8 +481,13 @@ class CreateProcessView(APIView):
 
     def get(self, request, pk=None):
         if pk is None:
-            filled_data = CreateProcess.objects.all().values('id', 'process_name')
-            return Response(filled_data)
+            try:
+                filled_data = CreateProcess.objects.all().values('id', 'process_name')
+                return Response(filled_data)
+            except Exception as e:
+                return Response({'error': f'An error occurred while fetching processes: {str(e)}'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         elif pk is not None:
             # get the process id
             try:
@@ -562,321 +495,330 @@ class CreateProcessView(APIView):
                 print("id_based_form_record ", id_based_form_record)
                 organization = id_based_form_record.organization
                 print("organization", organization.id)
+
+                process_data = id_based_form_record.participants  # get overall json form data
+
+                # Extract the first currentStepId from flow_1 in the executionFlow
+                first_current_step_id = process_data["executionFlow"]["flow_1"]["currentStepId"]
+
+                form = FormDataInfo.objects.filter(Form_uid=first_current_step_id).first()
+
+                if form:
+                    print('--- Activity starts --- 1')
+                    form_id_ref = form.id
+                    print("form_id_ref", form_id_ref)
+                    form_input_data = form.form_json_schema
+
+                    return Response(form_input_data,status=status.HTTP_200_OK)
+                else:
+                    return Response({'error': 'Form not found for the given currentStepId'},
+                                    status=status.HTTP_404_NOT_FOUND)
             except CreateProcess.DoesNotExist:
                 return Response({'error': 'Process not found'}, status=status.HTTP_404_NOT_FOUND)
-
-            # target_form_name = id_based_form_record.first_step  # initial form
-            # print("target_form_name",target_form_name)
-
-            process_data = id_based_form_record.participants  # get overall json form data
-
-            # # Load JSON data
-            # parsed_data = json.loads(process_data)
-
-            # Extract the first currentStepId from flow_1 in the executionFlow
-            first_current_step_id = process_data["executionFlow"]["flow_1"]["currentStepId"]
-
-            form = FormDataInfo.objects.filter(Form_uid=first_current_step_id).first()
-            # ocr = Ocr.objects.filter(ocr_uid=first_current_step_id).first()
-            # print("ocrdddddddddddddddddddddd",ocr)
-            # if ocr:
-            #     print('--- OCR starts --- 1')
-            if form:
-                print('--- Activity starts --- 1')
-                form_id_ref = form.id
-                print("form_id_ref", form_id_ref)
-                form_input_data = form.form_json_schema
-
-                # Convert the string representation of the JSON array into a JSON object
-                # json_data = json.loads(form_input_data)
-
-                return Response(form_input_data)
-
-            return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
+            except KeyError as e:
+                # Handle missing keys in the JSON data
+                return Response({'error': f'Missing key in JSON data: {str(e)}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            except ObjectDoesNotExist as e:
+                # Catch other object does not exist errors
+                return Response({'error': f'Resource not found: {str(e)}'},
+                                status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                # Handle any other unexpected errors
+                return Response({'error': f'An unexpected error occurred: {str(e)}'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
 
     def post(self, request, pk=None):
 
         global dms_data
-        if pk is None:
-            process_data = CreateProcess.objects.all()
-        elif pk is not None:
-            # get the process id
-            id_based_form_record = CreateProcess.objects.get(pk=pk)
-            organization_id = id_based_form_record.organization.id
-
-
-            if not id_based_form_record:
-                return Response({'error': 'Process not found'}, status=status.HTTP_404_NOT_FOUND)
-
-            # target_form_name = id_based_form_record.first_step  # Initial form
-            process_data = id_based_form_record.participants  # get overall json form data
-            process_id = id_based_form_record.pk
-            print("process_id", process_id)
-            # Load JSON data
-            # parsed_data = json.loads(process_data)
-            # Get the first key in the executionFlow dictionary
-            first_key = next(iter(process_data["executionFlow"]))
-
-            flows = []
-            # Iterate over the executionFlow to get currentStepId and nextStepId
-            for flow_key, flow_value in process_data["executionFlow"].items():
-                print(f"Processing flow: {flow_key}")
-                start_form_id = flow_value["currentStepId"]
-                end_form_id = flow_value["nextStepId"]
-                flows.append({"start": start_form_id, "end": end_form_id})
-
-                # field data (request)
-                userId = None  # request.data['userId']
-
-                if 'data_json' in request.data and request.data['data_json']:
-                    data_json_str = request.data['data_json']
-
-                    data_json = json.loads(data_json_str)
-
-
-                    # Extract the field id for file, if present in jsonData
-                    file_field_id = None
-                    for item in data_json:
-                        if item.get('field_id') and item.get('value'):
-                            file_field_id = item['field_id']
-                            break
-
-                    # Handle file if present in request.FILES
-                    file = None
-                    for field_name, uploaded_file in request.FILES.items():
-                        file = uploaded_file
-
-                        break  # Assuming only one file is expected; remove break if multiple files need handling
-
-                    # Prepare the file for the request
-
-                    if file:
-                        # Fetch drive types and configurations for the specific organization
-                        dms_entries = Dms.objects.filter(organization=organization_id)
-                        # drive_types = list(dms_entries.values_list('drive_types', flat=True))
-                        drive_types = dms_entries.first().drive_types if dms_entries.exists() else {}
-
-                        configurations = dms_entries.first().config_details_schema
-                        print("configurations type", type(configurations))
-                        # configurations.update("drive_type": drive_types)
-                        configurations['drive_types'] = drive_types
-                        # configurations['s3_bucket_metadata'] = drive_types
-                        print("configurations", configurations)
-
-                        metadata = {'form_id': start_form_id, 'organization_id': str(organization_id)}
-                        # Send file and additional data to another API if file is available
-                        # Extract the file from the request
-                        configurations['metadata'] = json.dumps(metadata)
-                        print("configurations", configurations)
-                        print("inside file")
-                        files = {'files': (file.name, file.file, file.content_type)}
-                        # external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
-                        external_api_url = f'{settings.BASE_URL}/custom_components/FileUploadView/'
-                        response = requests.post(
-                            external_api_url,
-                            data=configurations, files=files
-
-                        )
-                        print("response", response)
-                        if response.status_code == 200:
-                            # responses.append(response.json())  # Store the response
-                            response_json = response.json()
-                            print("response_json--------------", response_json)
-                            file_name = response_json.get('file_name')
-                            file_id = response_json.get('file', {}).get('id')
-                            if not file_id:
-                                file_id = response_json.get('file_id')
-                            file_name = response_json.get('file_name')
-                            download_link = response_json.get('download_link')
-                            print("download_link ",download_link)
-                            print("File Name:", file_name)
-                            print("File ID:", file_id)
-                            try:
-                                organization_instance = Organization.objects.get(id=organization_id)
-                            except Organization.DoesNotExist:
-                                # Handle the case where the organization does not exist
-                                organization_instance = None
-                            try:
-                                process_instance = CreateProcess.objects.get(id=process_id)
-                            except CreateProcess.DoesNotExist:
-                                # Handle the case where the organization does not exist
-                                process_instance = None
-
-                            try:
-                                dms_data, created = Dms_data.objects.get_or_create(
-                                    folder_id=file_id,
-                                    filename=file_name,
-                                    case_id=None,
-                                    flow_id=process_instance,
-                                    download_link=download_link,
-
-                                    organization=organization_instance,
-                                    defaults={'meta_data': configurations['metadata']}
-                                )
-
-                            except Exception as e:
-                                print("Error during get_or_create:", e)
-
-                                # Print details of integration_data to see if it is None or has unexpected values
-                            if dms_data is None:
-                                print("dms_data is None")
-                            else:
-                                print(f"dms_data details: {dms_data.__dict__}")
-
-                                # If BotData was found, update the data_schema fieldF
-                            if not created:
-                                try:
-                                    dms_data.meta_data = dms_data
-                                    dms_data.save()  # Ensure you call save on the correct object
-
-                                except Exception as e:
-                                    print("Error during integration_data save:", e)
-                        else:
-                            response_json = response.json()
-                            print("response_json", response_json)
-
-                            # responses.append(response_json)
-
-                    # data_json = data_json_str
-                    form_status = "In Progress"
-                    caseId = None  # request.data['caseId']
+        try:
+            if pk is None:
+                process_data = CreateProcess.objects.all()
+            elif pk is not None:
+                try:
+                    # get the process id
+                    id_based_form_record = CreateProcess.objects.get(pk=pk)
+                    organization_id = id_based_form_record.organization.id
+                    # target_form_name = id_based_form_record.first_step  # Initial form
+                    process_data = id_based_form_record.participants  # get overall json form data
                     process_id = id_based_form_record.pk
-                    print("process_id ", process_id)
+                    print("process_id", process_id)
+                except CreateProcess.DoesNotExist:
+                    return Response({'error': 'Process not found'}, status=status.HTTP_404_NOT_FOUND)
+                if not id_based_form_record:
+                    return Response({'error': 'Process not found'}, status=status.HTTP_404_NOT_FOUND)
 
-                    Filled_data_json = {
-                        'formId': start_form_id,
-                        'userId': userId,
-                        'processId': process_id,
-                        'data_json': data_json,  # json list (need to change)
-                        'caseId': caseId,
-                        'status': form_status,
-                        'organization': organization_id
-                    }
+                # Get the first key in the executionFlow dictionary
+                first_key = next(iter(process_data["executionFlow"]))
+                if first_key is None:
+                    return Response({'error': 'Invalid process data: executionFlow is empty'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
-                    # FilledFormData
-                    serializer = FilledDataInfoSerializer(data=Filled_data_json)
+                flows = []
+                # Iterate over the executionFlow to get currentStepId and nextStepId
+                for flow_key, flow_value in process_data["executionFlow"].items():
+                    print(f"Processing flow: {flow_key}")
+                    start_form_id = flow_value["currentStepId"]
+                    end_form_id = flow_value["nextStepId"]
+                    if start_form_id is None or end_form_id is None:
+                        return Response({'error': 'Invalid flow data'}, status=status.HTTP_400_BAD_REQUEST)
+                    flows.append({"start": start_form_id, "end": end_form_id})
 
-                    if serializer.is_valid():
-                        instance = serializer.save()
+                    # field data (request)
+                    userId = None  # request.data['userId']
 
-                        # Case field data (caseSerializer request)
-                        today = str(date.today())
-                        created_on = today  # request.data.get('created_on', today)
-                        created_by = 'admin'  # request.data.get('created_by', 'admin')
-                        updated_on = today  # request.data.get('updated_on', today)
-                        updated_by = ''  # request.data.get('updated_by', '')
-                        process_id = id_based_form_record.pk
-                        # Store filled form id in case as json (array)
-                        filled_form_id = instance.pk
-                        filled_form_ids = [filled_form_id]
-                        filled_form_id_data = filled_form_ids
-                        filled_form_id_data_json = json.dumps(filled_form_id_data)
+                    if 'data_json' in request.data and request.data['data_json']:
+                        try:
+                            data_json_str = request.data['data_json']
+                            data_json = json.loads(data_json_str)
+                        except json.JSONDecodeError as e:
+                            return Response({'error': 'Invalid JSON data', 'details': str(e)},
+                                            status=status.HTTP_400_BAD_REQUEST)
 
-                        # Case field data
-                        data_json = {
-                            'processId': process_id,
-                            'organization': organization_id,
-                            'created_on': created_on,
-                            'created_by': created_by,
-                            'status': 'In Progress',
-                            'updated_on': updated_on,
-                            'updated_by': updated_by,
-                            'next_step': '',
-                            'data_json': filled_form_id_data_json,  # json list (need to change)
-                            'path_json': ''
-                        }
-
-                        # Case
-                        case_serializer = CaseSerializer(data=data_json)
-
-                        if case_serializer.is_valid():
-                            print('if works---')
-                            case_instance = case_serializer.save()
-                            print('case_instance--', case_instance)
-
-                            # Apply rule bgn
-                            # current filled form data (for apply rule) bgn
-                            filled_form_data = FilledFormData.objects.filter(pk=instance.pk).first()
-                            filled_form_data_schema_form_id = filled_form_data.formId
-                            print('filled_form_data_schema_form_id----', filled_form_data_schema_form_id)
-
-                            actual_data = None
-
-                            print('++++++++++++++++++++++++ BGN 1++++++++++++++++++++++++')
-
-                            start = []
-
-                            for flow_key, flow_value in process_data["executionFlow"].items():
-                                # start_value = flow_value.get("currentStepId")
-                                # end_value = flow_value.get("nextStepId")
-                                start_value = flow_value["currentStepId"]
-                                print("start_value", start_value)
-                                end_value = flow_value["nextStepId"]
-
-                                print(f"--------Start: {start_value}, ---------End: {end_value}")
+                        # Extract the field id for file, if present in jsonData
+                        file_field_id = None
+                        for item in data_json:
+                            if item.get('field_id') and item.get('value'):
+                                file_field_id = item['field_id']
                                 break
 
-                            case_instance.next_step = end_value
-                            case_instance.save()
+                        # Handle file if present in request.FILES
+                        file = None
+                        for field_name, uploaded_file in request.FILES.items():
+                            file = uploaded_file
 
+                            break  # Assuming only one file is expected; remove break if multiple files need handling
 
-                            # Verify the updated next_step
-                            updated_case = Case.objects.get(pk=case_instance.pk)
-                            print("Updated next_step:", updated_case.next_step)
+                        # Prepare the file for the request
 
+                        if file:
+                            # Fetch drive types and configurations for the specific organization
+                            dms_entries = Dms.objects.filter(organization=organization_id)
+                            # drive_types = list(dms_entries.values_list('drive_types', flat=True))
+                            drive_types = dms_entries.first().drive_types if dms_entries.exists() else {}
 
+                            configurations = dms_entries.first().config_details_schema
+                            # configurations.update("drive_type": drive_types)
+                            configurations['drive_types'] = drive_types
+                            # configurations['s3_bucket_metadata'] = drive_types
+                            print("configurations", configurations)
 
-                            print('+++++++++++++++++++++++ END 1+++++++++++++++++++++++++')
-                            # find where end form stored in participants from json data  end
-                            # Apply rule end
+                            metadata = {'form_id': start_form_id, 'organization_id': str(organization_id)}
+                            # Extract the file from the request
+                            configurations['metadata'] = json.dumps(metadata)
+                            print("configurations", configurations)
 
-                            # store case id in filled form
-                            get_case_id = case_instance.pk
-                            print('get_case_id---', get_case_id)
-                            submitted_form_queryset = FilledFormData.objects.filter(pk=instance.pk)
-                            print('submitted_form_queryset---1', submitted_form_queryset)
+                            files = {'files': (file.name, file.file, file.content_type)}
+                            # external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
+                            external_api_url = f'{settings.BASE_URL}/custom_components/FileUploadView/'
+                            response = requests.post(
+                                external_api_url,
+                                data=configurations, files=files
 
-                            # Update the attributes of the retrieved object
-                            submitted_form_queryset.update(caseId=get_case_id, status="Completed")
+                            )
 
-                            # Get the first object from the queryset (assuming there's only one)
-                            submitted_form_instance = submitted_form_queryset.first()
-                            print('submitted_form_instance---2', submitted_form_instance)
+                            if response.status_code == 200:
+                                # responses.append(response.json())  # Store the response
+                                response_json = response.json()
+                                print("response_json--------------", response_json)
+                                file_name = response_json.get('file_name')
+                                file_id = response_json.get('file', {}).get('id')
+                                if not file_id:
+                                    file_id = response_json.get('file_id')
+                                file_name = response_json.get('file_name')
+                                download_link = response_json.get('download_link')
+                                print("download_link ", download_link)
+                                print("File Name:", file_name)
+                                print("File ID:", file_id)
+                                try:
+                                    organization_instance = Organization.objects.get(id=organization_id)
+                                except Organization.DoesNotExist:
+                                    # Handle the case where the organization does not exist
+                                    organization_instance = None
+                                try:
+                                    process_instance = CreateProcess.objects.get(id=process_id)
+                                except CreateProcess.DoesNotExist:
+                                    # Handle the case where the organization does not exist
+                                    process_instance = None
 
-                            # Access the formId attribute of the retrieved object
-                            get_form_schema_id = submitted_form_instance.formId
-                            print('get_form_schema_id--3', get_form_schema_id)
+                                try:
+                                    dms_data, created = Dms_data.objects.get_or_create(
+                                        folder_id=file_id,
+                                        filename=file_name,
+                                        case_id=None,
+                                        flow_id=process_instance,
+                                        download_link=download_link,
 
-                            # Update the case id in DMS
+                                        organization=organization_instance,
+                                        defaults={'meta_data': configurations['metadata']}
+                                    )
 
-                            print('+++++++++++++++++++++++ END 2+++++++++++++++++++++++++')
+                                except Exception as e:
+                                    print("Error during get_or_create:", e)
 
-                            # trigger_url = f"http://192.168.0.106:8000/process_related_cases/{get_case_id}/"
-                            trigger_url = f'{settings.BASE_URL}/process_related_cases/{get_case_id}/'
-                            payload = {'case_id': get_case_id}  # Adjust the payload as needed
-
-                            try:
-                                trigger_response = requests.post(trigger_url, data=payload)
-                                print("trigger_response ", trigger_response)
-                                trigger_response.raise_for_status()
-                                if trigger_response.status_code == 200:
-                                    print("Successfully triggered the URL")
+                                    # Print details of integration_data to see if it is None or has unexpected values
+                                if dms_data is None:
+                                    print("dms_data is None")
                                 else:
-                                    print(f"Failed to trigger the URL, status code: {trigger_response.status_code}")
-                            except requests.RequestException as e:
-                                # Log the error message
-                                print(f"An error occurred while triggering the URL: {e}")
-                                # Return an error response
-                                return Response({'error': 'Failed to trigger the URL', 'details': str(e)},
-                                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                                    print(f"dms_data details: {dms_data.__dict__}")
 
-                            #
-                            # # if updated_case
-                            # Trigger the get_case_related_forms URL after returning the case_id
-                            response = Response({'id': case_instance.pk}, status=status.HTTP_201_CREATED)
-                            return response
+                                    # If BotData was found, update the data_schema fieldF
+                                if not created:
+                                    try:
+                                        dms_data.meta_data = dms_data
+                                        dms_data.save()  # Ensure you call save on the correct object
 
-            return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
+                                    except Exception as e:
+                                        print("Error during integration_data save:", e)
+                            else:
+                                response_json = response.json()
+                                return Response({'error': 'Failed to upload file:', 'details': response_json},
+                                                status=status.HTTP_404_NOT_FOUND)
+
+                                # print("Failed to upload file:", response_json)
+
+                                # responses.append(response_json)
+
+                        # data_json = data_json_str
+                        form_status = "In Progress"
+                        caseId = None  # request.data['caseId']
+                        process_id = id_based_form_record.pk
+                        print("process_id ", process_id)
+
+                        Filled_data_json = {
+                            'formId': start_form_id,
+                            'userId': userId,
+                            'processId': process_id,
+                            'data_json': data_json,  # json list (need to change)
+                            'caseId': caseId,
+                            'status': form_status,
+                            'organization': organization_id
+                        }
+
+                        # FilledFormData
+                        serializer = FilledDataInfoSerializer(data=Filled_data_json)
+
+                        if serializer.is_valid():
+                            instance = serializer.save()
+
+                            # Case field data (caseSerializer request)
+                            today = str(date.today())
+                            created_on = today  # request.data.get('created_on', today)
+                            created_by = 'admin'  # request.data.get('created_by', 'admin')
+                            updated_on = today  # request.data.get('updated_on', today)
+                            updated_by = ''  # request.data.get('updated_by', '')
+                            process_id = id_based_form_record.pk
+                            # Store filled form id in case as json (array)
+                            filled_form_id = instance.pk
+                            filled_form_ids = [filled_form_id]
+                            filled_form_id_data = filled_form_ids
+                            filled_form_id_data_json = json.dumps(filled_form_id_data)
+
+                            # Case field data
+                            data_json = {
+                                'processId': process_id,
+                                'organization': organization_id,
+                                'created_on': created_on,
+                                'created_by': created_by,
+                                'status': 'In Progress',
+                                'updated_on': updated_on,
+                                'updated_by': updated_by,
+                                'next_step': '',
+                                'data_json': filled_form_id_data_json,  # json list (need to change)
+                                'path_json': ''
+                            }
+
+                            # Case
+                            case_serializer = CaseSerializer(data=data_json)
+
+                            if case_serializer.is_valid():
+                                print('if works---')
+                                case_instance = case_serializer.save()
+                                print('case_instance--', case_instance)
+
+                                # Apply rule bgn
+                                # current filled form data (for apply rule) bgn
+                                filled_form_data = FilledFormData.objects.filter(pk=instance.pk).first()
+                                filled_form_data_schema_form_id = filled_form_data.formId
+                                print('filled_form_data_schema_form_id----', filled_form_data_schema_form_id)
+
+                                actual_data = None
+
+                                print('++++++++++++++++++++++++ BGN 1++++++++++++++++++++++++')
+
+                                start = []
+
+                                for flow_key, flow_value in process_data["executionFlow"].items():
+                                    # start_value = flow_value.get("currentStepId")
+                                    # end_value = flow_value.get("nextStepId")
+                                    start_value = flow_value["currentStepId"]
+                                    print("start_value", start_value)
+                                    end_value = flow_value["nextStepId"]
+
+                                    print(f"--------Start: {start_value}, ---------End: {end_value}")
+                                    break
+
+                                case_instance.next_step = end_value
+                                case_instance.save()
+
+                                # Verify the updated next_step
+                                updated_case = Case.objects.get(pk=case_instance.pk)
+                                print("Updated next_step:", updated_case.next_step)
+
+                                print('+++++++++++++++++++++++ END 1+++++++++++++++++++++++++')
+                                # find where end form stored in participants from json data  end
+                                # Apply rule end
+
+                                # store case id in filled form
+                                get_case_id = case_instance.pk
+                                print('get_case_id---', get_case_id)
+                                submitted_form_queryset = FilledFormData.objects.filter(pk=instance.pk)
+                                print('submitted_form_queryset---1', submitted_form_queryset)
+
+                                # Update the attributes of the retrieved object
+                                submitted_form_queryset.update(caseId=get_case_id, status="Completed")
+
+                                # Get the first object from the queryset (assuming there's only one)
+                                submitted_form_instance = submitted_form_queryset.first()
+                                print('submitted_form_instance---2', submitted_form_instance)
+
+                                # Access the formId attribute of the retrieved object
+                                get_form_schema_id = submitted_form_instance.formId
+                                print('get_form_schema_id--3', get_form_schema_id)
+
+                                # Update the case id in DMS
+
+                                print('+++++++++++++++++++++++ END 2+++++++++++++++++++++++++')
+
+                                # trigger_url = f"http://192.168.0.106:8000/process_related_cases/{get_case_id}/"
+                                trigger_url = f'{settings.BASE_URL}/process_related_cases/{get_case_id}/'
+                                payload = {'case_id': get_case_id}  # Adjust the payload as needed
+
+                                try:
+                                    trigger_response = requests.post(trigger_url, data=payload)
+                                    print("trigger_response ", trigger_response)
+                                    trigger_response.raise_for_status()
+                                    if trigger_response.status_code == 200:
+                                        print("Successfully triggered the URL")
+                                    # else:
+                                    #     print(f"Failed to trigger the URL, status code: {trigger_response.status_code}")
+                                except requests.RequestException as e:
+                                    return Response({'error': 'Failed to trigger the URL', 'details': str(e)},
+                                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+                                # Trigger the get_case_related_forms URL after returning the case_id
+                                response = Response({'id': case_instance.pk}, status=status.HTTP_201_CREATED)
+                                return response
+                            return Response(case_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print("An unexpected error occurred:", e)
+            return Response({'error': 'An unexpected error occurred', 'details': str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -890,48 +832,64 @@ class CaseDetailView(APIView):
             case = Case.objects.get(id=case_id, organization_id=organization_id, processId=process_id)
         except Case.DoesNotExist:
             return Response({'error': 'Case not found'}, status=404)
-
-        # Fetch filled form data associated with this case
-        filled_form_data = FilledFormData.objects.filter(caseId=case_id, organization_id=organization_id,
-                                                         processId=process_id)
-
         filled_form_data_list = []
-        if filled_form_data.exists():
-            # Serialize the case
-            case_data = CaseSerializer(case).data
+        try:
+            # Fetch filled form data associated with this case
+            filled_form_data = FilledFormData.objects.filter(caseId=case_id, organization_id=organization_id,
+                                                             processId=process_id)
 
-            # Retrieve form details and append to filled form data
-            for filled_data in filled_form_data:
-                form_id = str(filled_data.formId)
 
-                form_info = FormDataInfo.objects.filter(Form_uid=form_id).first()
-                filled_data_serialized = FilledDataInfoSerializer(filled_data).data
-                if form_info:
-                    filled_data_serialized['form_name'] = form_info.form_name
-                    filled_data_serialized['form_description'] = form_info.form_description
-                filled_form_data_list.append(filled_data_serialized)
-        else:
-            return Response({'error': 'No filled form data found for this case'}, status=404)
+            if filled_form_data.exists():
+                # Serialize the case
+                case_data = CaseSerializer(case).data
 
-        # Fetch and serialize bot data
-        bot_data = BotData.objects.filter(case_id=case_id, organization=organization_id, flow_id=process_id)
-        serialized_bot_data = BotDataSerializer(bot_data, many=True).data if bot_data.exists() else []
+                # Retrieve form details and append to filled form data
+                for filled_data in filled_form_data:
+                    form_id = str(filled_data.formId)
 
-        # Fetch and serialize integration data
-        integration_data = IntegrationDetails.objects.filter(case_id=case_id, organization=organization_id,
-                                                             flow_id=process_id)
-        serialized_integration_data = IntegrationDetailsSerializer(integration_data,
-                                                                   many=True).data if integration_data.exists() else []
-
-        # Fetch and serialize OCR data
-        ocr_data = Ocr_Details.objects.filter(case_id=case_id, organization=organization_id,
-                                              flow_id=process_id)
-        serialized_ocr_data = Ocr_DetailsSerializer(ocr_data, many=True).data if ocr_data.exists() else []
-
-        # Fetch and serialize DMS data
-        dms_data_qs = Dms_data.objects.filter(case_id=case_id, organization=organization_id,
-                                              flow_id=process_id)
-        serialized_dms_data = DmsDataSerializer(dms_data_qs, many=True).data if dms_data_qs.exists() else []
+                    form_info = FormDataInfo.objects.filter(Form_uid=form_id).first()
+                    filled_data_serialized = FilledDataInfoSerializer(filled_data).data
+                    if form_info:
+                        filled_data_serialized['form_name'] = form_info.form_name
+                        filled_data_serialized['form_description'] = form_info.form_description
+                    filled_form_data_list.append(filled_data_serialized)
+            else:
+                return Response({'error': 'No filled form data found for this case'}, status=404)
+        except Exception as e:
+            return Response({'error': f'Error retrieving filled form data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            # Fetch and serialize bot data
+            bot_data = BotData.objects.filter(case_id=case_id, organization=organization_id, flow_id=process_id)
+            serialized_bot_data = BotDataSerializer(bot_data, many=True).data if bot_data.exists() else []
+        except Exception as e:
+            return Response({'error': f'Error retrieving bot data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            # Fetch and serialize integration data
+            integration_data = IntegrationDetails.objects.filter(case_id=case_id, organization=organization_id,
+                                                                 flow_id=process_id)
+            serialized_integration_data = IntegrationDetailsSerializer(integration_data,
+                                                                       many=True).data if integration_data.exists() else []
+        except Exception as e:
+            return Response({'error': f'Error retrieving integration data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            # Fetch and serialize OCR data
+            ocr_data = Ocr_Details.objects.filter(case_id=case_id, organization=organization_id,
+                                                  flow_id=process_id)
+            serialized_ocr_data = Ocr_DetailsSerializer(ocr_data, many=True).data if ocr_data.exists() else []
+        except Exception as e:
+            return Response({'error': f'Error retrieving OCR data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            # Fetch and serialize DMS data
+            dms_data_qs = Dms_data.objects.filter(case_id=case_id, organization=organization_id,
+                                                  flow_id=process_id)
+            serialized_dms_data = DmsDataSerializer(dms_data_qs, many=True).data if dms_data_qs.exists() else []
+        except Exception as e:
+            return Response({'error': f'Error retrieving DMS data: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Construct the response data
         response_data = {
@@ -1029,20 +987,16 @@ class CaseRelatedFormView(APIView):
             serializer = CaseSerializer(cases, many=True)
             serialized_data = serializer.data
 
-
             for data_item in serialized_data:
                 data_json_ids = [int(id.strip()) for id in data_item['data_json'].strip('[]').split(',') if
                                  id.strip().isdigit()]
 
                 data_json_id = data_json_ids[0] if data_json_ids else None
 
-
-
                 try:
                     filled_form_data = FilledFormData.objects.get(pk=data_json_id)
                 except FilledFormData.DoesNotExist:
                     filled_form_data = None
-
 
                 dt = FilledDataInfoSerializer(filled_form_data).data
                 data_json_value = dt.get('data_json', None)
@@ -1106,7 +1060,7 @@ class CaseRelatedFormView(APIView):
                 integration_names = [integration_data.integration.integration_type for integration_data in
                                      integration_data]
                 ocr_data = Ocr_Details.objects.filter(case_id=cs_id)
-                print("ocr_data",ocr_data)
+                print("ocr_data", ocr_data)
                 ocr_names = [ocr_data.data_schema for ocr_data in
                              ocr_data]
                 print("ocr_names", ocr_names)
@@ -1166,7 +1120,6 @@ class CaseRelatedFormView(APIView):
             # parsed_data = json.loads(participants_data)
             execution_flow = participants_data.get('executionFlow', [])
             steps = {flow['currentStepId']: flow for flow in execution_flow.values()}
-            print("steps", steps)
 
             # Load JSON data
 
@@ -1353,12 +1306,22 @@ class CaseRelatedFormView(APIView):
                                             bot_data.save()  # Save the updated BotData instance
                                             responses.append(response_json)  # Store the response
                                         else:
+                                            response = {"error": response.text}
                                             print("Failed to get response from convert_excel_to_json function:",
-                                                  response.text)
+                                                  response)
+
+                                            # print("Failed to get response from convert_excel_to_json function:",
+                                            #       response.text)
                                 else:
-                                    print('Bot schema not found for file extractor bot:', file_extractor_bot)
+                                    response = {"error": file_extractor_bot}
+                                    print("Failed to get response from convert_excel_to_json function:", response)
+
+                                    # print('Bot schema not found for file extractor bot:', file_extractor_bot)
                         else:
-                            print('File extractor bot not found with UID:', current_step_id)
+                            response = {"error": current_step_id}
+                            print("Failed to get response from convert_excel_to_json function:", response)
+
+                            # print('File extractor bot not found with UID:', current_step_id)
 
                         # return responses
                     elif bot_type == 'screen_scraping':
@@ -1485,7 +1448,9 @@ class CaseRelatedFormView(APIView):
                             #      "message": "Screen scraping executed"})  # Store the required message
                         else:
                             response_json = response.json()
-                            print("response_json",response_json)
+
+                            response = {"error": response_json}
+                            print("Failed to get response from convert_excel_to_json function:", response)
                             responses.append({'error': 'Failed to execute Screen Scraping bot'})
 
                         print(' ---- screen_scraping_executed ---')
@@ -1602,7 +1567,9 @@ class CaseRelatedFormView(APIView):
                             if response.status_code == 200:
                                 # responses.append(response.json())  # Store the response
                                 response_json = response.json()
-                                integrationdata = response_json.get('data')  # Extract 'data' from the response
+
+                                integrationdata = response_json.get('response_data')  # Extract 'data' from the response
+
                                 try:
                                     organization_instance = Organization.objects.get(id=organization_id)
                                 except Organization.DoesNotExist:
@@ -1724,7 +1691,6 @@ class CaseRelatedFormView(APIView):
                                 # external_api_url = 'http://192.168.0.106:8000/custom_components/FileUploadView/'
                                 external_api_url = f'{settings.BASE_URL}/custom_components/FileUploadView/'
                                 response = requests.post(external_api_url, data=configurations, files=files)
-
 
                                 if response.status_code == 200:
                                     # responses.append(response.json())  # Store the response
@@ -1968,9 +1934,6 @@ class CaseRelatedFormView(APIView):
 
                     rule_input_data = rule.rule_json_schema
                     print("rule_input_data", rule_input_data)
-                    # Parse the JSON data
-                    # data = json.loads(rule_input_data)
-                    # print("dataaaaaaaaaaaaa",data)
 
                     # Extract sources and value_sources into sets
                     sources = set()
@@ -2119,14 +2082,13 @@ class CaseRelatedFormView(APIView):
                 elif ocr:
                     print('--- OCR starts --- 1')
 
-
                     ocr_id_ref = str(ocr.ocr_uid)
                     print("ocr_id_ref:", ocr_id_ref)
                     try:
-                      ocr_details = Ocr.objects.get(ocr_uid=ocr_id_ref)
-                      print("ocr_details:", ocr_details)
+                        ocr_details = Ocr.objects.get(ocr_uid=ocr_id_ref)
+                        print("ocr_details:", ocr_details)
                     except Ocr.DoesNotExist:
-                      ocr_details = None
+                        ocr_details = None
                     if isinstance(process_data, CreateProcess):
                         process_id = process_data.id
                         print("Extracted process_id:", process_id)
@@ -2139,7 +2101,7 @@ class CaseRelatedFormView(APIView):
                     #     form_json_schema = None
 
                     if 'data_json' in request.data:
-                        print("^^^^^^^^^^^^^^^^^^^^^",request.data)
+                        print("^^^^^^^^^^^^^^^^^^^^^", request.data)
                         data_json = request.data.get('data_json', None)
                         # data_json_str = request.data['data_json']
                         print("data_json_str", data_json)
@@ -2197,67 +2159,9 @@ class CaseRelatedFormView(APIView):
 
                         return self.get(request, organization_id, process_id, pk)
 
-
-                    # if 'data_json' in request.data and request.data['data_json']:
-                    #         data_json_str = request.data['data_json']
-                    #         print("data_json_str", type(data_json_str))
-                    #
-                    #         data_json = data_json_str
-                    #         caseId = case.id  # Assuming case.id is available
-                    #         print("caseId", caseId)
-                    #         process_id = process_data.id  # Assuming process_data.id is available
-                    #         print("process_id", process_id)
-                    #         organization_id = organization_id
-                    #         print("organization_id", organization_id)
-                    #         filled_ocr_data = {
-                    #             'ocr_uid': ocr_id_ref,
-                    #             'flow_id': process_id,
-                    #             'organization': organization_id,
-                    #             'data_schema': data_json,  # JSON list (need to change)
-                    #             'case_id': caseId,
-                    #         }
-                    #         print("filled_ocr_data", filled_ocr_data)
-                    #         # Serialize and save the filled form data
-                    #         serializer = Ocr_DetailsSerializer(data=filled_ocr_data)
-                    #         if serializer.is_valid():
-                    #             print("filled_ocr_data is valid")
-                    #             instance = serializer.save()
-                    #             print("Serializer data is valid:", serializer.validated_data)
-                    #             response.update({
-                    #                 'filled_ocr_data': serializer.data
-                    #             })
-                    #             case_data = Case.objects.select_for_update().get(pk=case.id)
-                    #             case_data.data_json = json.dumps(
-                    #                 json.loads(case_data.data_json) + [case_data.next_step])
-                    #             case_data.status = "In Progress"
-                    #             if not isinstance(case_data.path_json, list):
-                    #                 case_data.path_json = []
-                    #             # Append next_step to path_json
-                    #             case_data.path_json.append(case_data.next_step)
-                    #             case_data.save()
-                    #             case_data.next_step = next_step_id  # Assuming next_step_id is determined elsewhere
-                    #             case_data.save()
-                    #             print("next_step_id ", next_step_id)
-                    #             if next_step_id.lower() == "null" or cs_next_step == "null":
-                    #                 case_data.status = "Completed"
-                    #                 case_data.save()
-                    #                 responses.append(case_data.status)
-                    #
-                    #             # responses.append(response_data)
-                    #             print("Returning successful response")
-                    #             return Response(response, status=status.HTTP_201_CREATED)  # Return
-                    #
-                    #         else:
-                    #             # Return error response if serializer is not valid
-                    #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-                        # else:
-                        #     return Response({"error": "Form schema not found and no data to fill."},
-                        #                     status=status.HTTP_400_BAD_REQUEST)
                     else:
                         return Response({"error": "Ocr Details not found."},
                                         status=status.HTTP_404_NOT_FOUND)  # Handle case when form_json_schema is not found
-
-
 
                 current_step_id = steps[current_step_id]['nextStepId']
                 print("current_step_id", current_step_id)
@@ -2329,60 +2233,40 @@ class CaseRelatedFormView(APIView):
 ################# userfilleddata based on organization and process starts ###################################
 
 
-
-
-
-
 class OrganizationCasesView(APIView):
     def get(self, request, organization_id):
         try:
             organization = Organization.objects.get(id=organization_id)
         except Organization.DoesNotExist:
             return Response({'error': 'Organization not found'}, status=404)
+        try:
+            # Query all cases related to the organization through its processes
+            cases = Case.objects.filter(organization=organization)
 
-        # Query all cases related to the organization through its processes
-        cases = Case.objects.filter(organization=organization)
+            # Aggregate data
+            total_cases = cases.count()
+            completed_cases = cases.filter(status='Completed').count()
+            inprogress_cases = cases.filter(status='In Progress').count()
 
-        # Aggregate data
-        total_cases = cases.count()
-        completed_cases = cases.filter(status='Completed').count()
-        inprogress_cases = cases.filter(status='In Progress').count()
+            # Serialize case details
+            case_serializer = CaseSerializer(cases, many=True)
 
-        # Serialize case details
-        case_serializer = CaseSerializer(cases, many=True)
+            response_data = {
+                'organization_id': organization.id,
+                'total_cases': total_cases,
+                'completed_cases': completed_cases,
+                'inprogress_cases': inprogress_cases,
+                'cases': case_serializer.data,
+            }
 
-        response_data = {
-            'organization_id': organization.id,
-            'total_cases': total_cases,
-            'completed_cases': completed_cases,
-            'inprogress_cases': inprogress_cases,
-            'cases': case_serializer.data,
-        }
+            return Response(response_data)
+        except Exception as e:
+            # Log the exception details for debugging purposes
+            print(f"Error retrieving cases: {str(e)}")
 
-        return Response(response_data)
+            return Response({'error': 'An error occurred while retrieving case data'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # def get(self, request, organization_id):
-    #     try:
-    #         organization = Organization.objects.get(id=organization_id)
-    #     except Organization.DoesNotExist:
-    #         return Response({'error': 'Organization not found'}, status=404)
-    #
-    #     # Query all cases related to the organization through its processes
-    #     cases = Case.objects.filter(organization=organization)
-    #
-    #     # Aggregate data
-    #     total_cases = cases.count()
-    #     completed_cases = cases.filter(status='completed').count()
-    #     inprogress_cases = cases.filter(status='in-progress').count()
-    #
-    #     response_data = {
-    #         'organization_id': organization.id,
-    #         'total_cases': total_cases,
-    #         'completed_cases': completed_cases,
-    #         'inprogress_cases': inprogress_cases,
-    #     }
-    #
-    #     return Response(response_data)
 
 
 class CoreData(APIView):
@@ -2610,7 +2494,7 @@ class UserCreateView(APIView):
             token = token_generator.make_token(user)
             print("token", token)
             reset_url = reverse('password_reset', kwargs={'user_id': user.id, 'token': token})
-            print("reset_url",reset_url)
+            print("reset_url", reset_url)
             # reset_link = request.build_absolute_uri(reset_url)
             # Combine SITE_URL with the reset URL path to form the full URL
             reset_link = f"{settings.SITE_URL}/{user.id}/reset-continue/{token}"
@@ -2631,12 +2515,12 @@ class UserCreateView(APIView):
 
 
 class LoginView(APIView):
-    def post(self, request,organization_id=None, format=None):
+    def post(self, request, organization_id=None, format=None):
         mail_id = request.data.get('mail_id')
         password = request.data.get('password')
 
         user = authenticate(request, mail_id=mail_id, password=password)
-        print("user",user)
+        print("user", user)
 
         if user is not None:
 
@@ -2650,7 +2534,10 @@ class LoginView(APIView):
 
                 usergroup = user_data.usergroup
                 usergroup_id = user_data.id
-                if mail_id == "admin@skycode.com" and password == "Skycode@123":
+                # if mail_id == "admin@skycode.com" and password == "Skycode@123":
+
+                if (mail_id == "admin@skycode.com" and password == "Skycode@123") or \
+                        (mail_id == "anotheruser@skycode.com" and password == "AnotherPassword"):
                     usergroup_name = "skycode_admin"
                     usergroup_id = usergroup.id if usergroup else None
                 else:
@@ -2663,36 +2550,36 @@ class LoginView(APIView):
                 organization_code = organization.org_code if organization else None
 
                 token, created = Token.objects.get_or_create(user=user)
-            # # Default values
-            # usergroup_name = "is_superuser"
-            # organization_code = None
-            # # Get additional user data
-            # try:
-            #     user_data = UserData.objects.get(mail_id=mail_id)
-            #     usergroup = user_data.usergroup
-            #     if mail_id == "admin@skycode.com" and password == "Skycode@123":
-            #         usergroup_name = "skycode_admin"
-            #     else:
-            #         usergroup_name = usergroup.group_name if usergroup else "is_superuser"
-            #
-            #     # usergroup_name = usergroup.group_name if usergroup else "is_superuser"
-            #     # Get organization details if present
-            #     organization = user_data.organization
-            #     organization_id = organization.id if organization else None
-            #     organization_code = organization.org_code if organization else None
-            #
-            #
-            # except UserData.DoesNotExist:
-            #     user_data = None
-            #     # usergroup_name = "is_superuser"
-            #     organization_id = None
-            #     organization_code = None
+                # # Default values
+                # usergroup_name = "is_superuser"
+                # organization_code = None
+                # # Get additional user data
+                # try:
+                #     user_data = UserData.objects.get(mail_id=mail_id)
+                #     usergroup = user_data.usergroup
+                #     if mail_id == "admin@skycode.com" and password == "Skycode@123":
+                #         usergroup_name = "skycode_admin"
+                #     else:
+                #         usergroup_name = usergroup.group_name if usergroup else "is_superuser"
+                #
+                #     # usergroup_name = usergroup.group_name if usergroup else "is_superuser"
+                #     # Get organization details if present
+                #     organization = user_data.organization
+                #     organization_id = organization.id if organization else None
+                #     organization_code = organization.org_code if organization else None
+                #
+                #
+                # except UserData.DoesNotExist:
+                #     user_data = None
+                #     # usergroup_name = "is_superuser"
+                #     organization_id = None
+                #     organization_code = None
                 response_data = {
-                    "id":usergroup_id,
+                    "id": usergroup_id,
                     "user_id": user.id,
                     "usergroup": usergroup_name,
                     "token": token.key,
-                    "mail_id":mail_id,
+                    "mail_id": mail_id,
                     "organization_id": organization_id,
                     "organization_code": organization_code,
                 }
