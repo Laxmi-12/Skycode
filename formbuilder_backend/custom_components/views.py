@@ -247,10 +247,13 @@ class BotListCreateView(generics.ListCreateAPIView):
         response_data = []
 
         for botschema in queryset:
+            flow_data = None
+            if botschema.flow_id:  # Check if flow_id is not None
+                flow_data = CreateProcessSerializer(botschema.flow_id).data
             combined_data = {
                 'id': botschema.bot.id,
                 'bot_schema_json': botschema.bot_schema_json,
-                'flow_id': botschema.flow_id,
+                'flow_id': flow_data,
                 'organization': botschema.organization.id,  # Assuming organization ID is enough
                 'bot_name': botschema.bot.bot_name,
                 'bot_description': botschema.bot.bot_description,
@@ -739,7 +742,7 @@ class ProcessBuilder(APIView):
                 process.user_group.set(user_groups)  # user_groups should be a list of IDs
 
             process.save()
-            process.save()
+
 
         except CreateProcess.DoesNotExist:
             logger.error("Process not found: %s", process_id)
@@ -817,7 +820,7 @@ class ProcessBuilder(APIView):
                     # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
 
                 else:
-                    process.delete()  # Rollback if Integration creation fails
+                    # process.delete()  # Rollback if Integration creation fails
                     logger.error("Integration creation failed: %s", integration_serializer.errors)
                     return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -906,14 +909,14 @@ class ProcessBuilder(APIView):
                         rule_data_instance = rule_data_serializer.save()
                         print(f"Rule {rule_id} saved successfully.")
                     else:
-                        process.delete()  # Rollback if FormDataInfo creation fails
+                        # process.delete()  # Rollback if FormDataInfo creation fails
                         # bot_instance.delete()
                         # integration_instance.delete()
                         logger.error("Rule creation failed: %s", rule_data_serializer.errors)
                         return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                         # return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                 except Exception as e:
-                    process.delete()  # Rollback if any exception occurs
+                    # process.delete()  # Rollback if any exception occurs
                     print(f"Error occurred: {e}")
                     return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             ## to get OCR component and save in process starts
@@ -965,7 +968,7 @@ class ProcessBuilder(APIView):
             return Response("Process created successfully", status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            process.delete()  # Rollback if any exception occurs
+            # process.delete()  # Rollback if any exception occurs
             logger.error("Error occurred during processing: %s", str(e))
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -1150,7 +1153,7 @@ def list_drive_files(request):
 
 
 @api_view(['POST'])
-def convert_excel_to_json(request):
+def convert_excel_to_json1(request):
     try:
         # Get the JSON data from the request
         input_data = json.loads(request.body.decode('utf-8'))
@@ -1234,7 +1237,111 @@ def convert_excel_to_json(request):
 
 
 ########################## Google Drive END ##########################
+@api_view(['POST'])
+def convert_excel_to_json(request):
+    try:
+        # Check if a file is provided directly in the request
+        uploaded_file = request.FILES.get('file', None)
 
+        # If no file is uploaded, check for file_name in the input data
+        if not uploaded_file:
+            input_data = json.loads(request.body.decode('utf-8'))
+
+            # Validate input data for file_name and column definitions
+            if 'file_name' not in input_data or 'column_definitions' not in input_data:
+                logger.error('Missing required fields in input JSON')
+                return JsonResponse({"error": "Missing required fields in input JSON"}, status=400)
+
+            file_name = input_data['file_name']
+            sheet_name = input_data.get('sheet_name')  # Optional sheet name
+            column_definitions = input_data['column_definitions']
+
+            # Assuming the file is stored locally; update path as needed
+            file_path = os.path.join('path/to/files/directory', file_name)
+
+            # Check if the file exists
+            if not os.path.exists(file_path):
+                logger.error(f'File not found: {file_name}')
+                return JsonResponse({"error": f"File not found: {file_name}"}, status=404)
+
+            # Read the Excel file from the file path
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+        else:
+            # If a file is uploaded, process it directly
+            input_data = json.loads(request.body.decode('utf-8'))
+
+            # Validate input data for column definitions
+            if 'column_definitions' not in input_data:
+                logger.error('Missing column_definitions in input JSON')
+                return JsonResponse({"error": "Missing column_definitions in input JSON"}, status=400)
+
+            column_definitions = input_data['column_definitions']
+            sheet_name = input_data.get('sheet_name')  # Optional sheet name
+
+            # Read the Excel file from the uploaded file
+            df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
+
+        # Initialize a new dictionary to hold the final column names
+        final_columns = {}
+        files = []
+
+        # Process the column definitions to map the columns
+        for definition in column_definitions:
+            column_key = definition['column_key']
+            field_labels = definition['field_labels']
+
+            for col in df.columns:
+                if col in field_labels:
+                    final_columns[col] = column_key
+                    break
+
+        # Check if all required columns are mapped
+        if len(final_columns) != len(column_definitions):
+            missing_columns = set([d['column_key'] for d in column_definitions]) - set(final_columns.values())
+            logger.error(f'Missing columns in Excel: {missing_columns}')
+            return JsonResponse({"error": f"Missing columns in Excel: {missing_columns}"}, status=400)
+
+        # Rename the columns based on the mapping found
+        df = df.rename(columns=final_columns)
+
+        # Select only the columns specified in the final mapping
+        df = df[list(final_columns.values())]
+
+        # Convert DataFrame to JSON
+        json_data = df.to_json(orient='records', date_format='iso')
+
+        # Transform JSON data into the desired format
+        transformed_data = []
+        for record in json.loads(json_data):
+            for key, value in record.items():
+                value_type = "String"
+                if isinstance(value, bool):
+                    value_type = "Boolean"
+                elif isinstance(value, (int, float)):
+                    value_type = "Number"
+                elif isinstance(value, pd.Timestamp):
+                    value_type = "Date"
+                transformed_data.append({
+                    "field_id": key,
+                    "value": value,
+                    "value_type": value_type
+                })
+
+        logger.info(f"Processed file successfully")
+
+        # Return the JSON data
+        response_data = {
+            "data": transformed_data
+        }
+        files.append(response_data)
+        return JsonResponse(response_data, safe=False)
+
+    except json.JSONDecodeError as e:
+        logger.error(f'Error decoding JSON: {str(e)}')
+        return JsonResponse({"error": f"Error decoding JSON: {str(e)}"}, status=400)
+    except Exception as e:
+        logger.error(f'Unexpected error: {str(e)}')
+        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
 
 ##################### API Integration and screen scraping BGN #############
 

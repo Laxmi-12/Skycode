@@ -250,11 +250,20 @@ class UserFilledDataView(APIView):
 
             data = []
             for filled_data in filled_data_list:
-                case = filled_data.caseId
                 filled_data_info = FilledDataInfoSerializer(filled_data).data
-                filled_data_info['created_on'] = case.created_on
-                filled_data_info['updated_on'] = case.updated_on
-                filled_data_info['process_name'] = filled_data.processId.process_name
+                case = filled_data.caseId
+                if case is not None:
+                    filled_data_info['created_on'] = case.created_on
+                    filled_data_info['updated_on'] = case.updated_on
+                else:
+                    filled_data_info['created_on'] = None
+                    filled_data_info['updated_on'] = None
+                # filled_data_info['created_on'] = case.created_on
+                # filled_data_info['updated_on'] = case.updated_on
+                # filled_data_info['process_name'] = filled_data.processId.process_name
+                filled_data_info['process_name'] = (
+                    filled_data.processId.process_name if filled_data.processId else None
+                )
                 filled_data_info['user_groups'] = list(filled_data.user_groups.values_list('id', flat=True))
                 # filled_data_info['user_groups'] = filled_data.user_groups.id if filled_data.user_groups else None
                 data.append(filled_data_info)
@@ -541,7 +550,7 @@ class CreateProcessView(APIView):
                     id_based_form_record = CreateProcess.objects.get(pk=pk)
                     organization_id = id_based_form_record.organization.id
                     # target_form_name = id_based_form_record.first_step  # Initial form
-                    process_data = id_based_form_record.participants  # get overall json form data
+                    process_data = id_based_form_record.participants  # get overall json participants data
                     process_id = id_based_form_record.pk
                     print("process_id", process_id)
                 except CreateProcess.DoesNotExist:
@@ -1284,7 +1293,7 @@ class CaseRelatedFormView(APIView):
                                             'file_name': file_extractor_input_data['file_name'],
                                             'sheet_name': file_extractor_input_data.get('sheet_name'),
                                             'column_definitions': file_extractor_input_data['column_definitions'],
-                                            'file_path': file_path
+
 
                                         }
 

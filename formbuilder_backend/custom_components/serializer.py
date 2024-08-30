@@ -1,11 +1,16 @@
 from venv import logger
 
 from rest_framework import serializers
+
+from form_generator.models import CreateProcess
 from .models import Bot, BotSchema, BotData, Integration, IntegrationDetails, Organization, UserGroup, Ocr, Ocr_Details, Dashboard, \
     Dms,Dms_data,Ocr_Details
 import json
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
+
+
+
 
 
 class JSONField(serializers.Field):
@@ -33,6 +38,7 @@ class BotSchemaSerializer(serializers.ModelSerializer):
     # bot = BotSerializer()
     # bot = BotSerializer(read_only=True)
     bot_schema_json = JSONField()
+    flow_id = serializers.PrimaryKeyRelatedField(queryset=CreateProcess.objects.all())  # Add this line
 
     class Meta:
         model = BotSchema
