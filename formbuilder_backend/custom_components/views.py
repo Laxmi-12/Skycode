@@ -86,12 +86,6 @@ from rest_framework.exceptions import NotFound
 from django.core.exceptions import ObjectDoesNotExist
 
 from PIL import Image, ImageDraw
-from ultralytics import YOLO
-import easyocr
-import numpy as np
-import tempfile
-from pypdf import PdfReader
-import ocrmypdf
 from datetime import datetime
 
 # import for OCR Components ends ######################################
@@ -123,9 +117,9 @@ import os
 """---------------Create Log file-------------------"""
 import logging
 
-logger = logging.getLogger(__name__)
+#logger = logging.getLogger(__name__)
 User = get_user_model()
-logger = logging.getLogger('formbuilder_backend')  # Replace 'myapp' with the name of your app
+logger = logging.getLogger('custom_components')  # Replace 'myapp' with the name of your app
 IGNORE_ERRORS = [
     "web view not found"
 ]
@@ -315,10 +309,11 @@ class BotListCreateView(generics.ListCreateAPIView):
             logger.error(f"Invalid bot data: {bot_serializer.errors}")
             return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         print("bot_instance", bot_instance.id)
+        flow_id = bot_data.get('flow_id', None)
         bot_schema_data = {
             'bot': bot_instance.id,
             'bot_schema_json': bot_schema_json,
-            'flow_id': None,  # Assuming flow_id is not provided in the input
+            'flow_id': flow_id,  # Assuming flow_id is not provided in the input
             'organization': organization_id
         }
         logger.debug(f"bot_schema_data: {bot_schema_data}")
@@ -757,72 +752,134 @@ class ProcessBuilder(APIView):
             bots_data = request.data.get('bots', [])  # Get list of bots data, default empty list
             logger.info("Bots data: %s", bots_data)
             for bot_data in bots_data:
-                bot_name = bot_data.get('bot_name')
-                bot_uid = bot_data.get('bot_uid')
-                bot_description = bot_data.get('bot_description')
-                bot_schema_json = bot_data.get('bot_schema_json')
+                try:
+                    bot_name = bot_data.get('bot_name')
+                    bot_uid = bot_data.get('bot_uid')
+                    bot_description = bot_data.get('bot_description')
+                    bot_schema_json = bot_data.get('bot_schema_json')
+                    try:
+                        bot_instance = Bot.objects.get(bot_uid=bot_uid)
+                        # If the bot exists, update its fields
+                        bot_instance.bot_name = bot_name
+                        bot_instance.bot_description = bot_description
+                        bot_instance.save()
+                    except Bot.DoesNotExist:
+                        bot_data = {  # bot serializer
+                            'bot_uid': bot_uid,
+                            'bot_name': bot_name,
+                            'bot_description': bot_description,
+                             }
+                        print('bot_data---0.2', bot_data)
+                        bot_serializer = BotSerializer(data=bot_data)
+                        if bot_serializer.is_valid():
+                            bot_instance = bot_serializer.save()
+                        else:
+                            #process.delete()  # Rollback if Bot creation fails
+                            return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-                bot_data = {  # bot serializer
-                    'bot_uid': bot_uid,
-                    'bot_name': bot_name,
-                    'bot_description': bot_description,
-                }
-                print('bot_data---0.2', bot_data)
-                bot_serializer = BotSerializer(data=bot_data)
-                if bot_serializer.is_valid():
-                    bot_instance = bot_serializer.save()
-                else:
-                    process.delete()  # Rollback if Bot creation fails
-                    logger.error("Bot creation failed: %s", bot_serializer.errors)
-                    return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    # Create BotSchema instance
+                    bot_schema_data = {  # bot schema serializer
+                        'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
+                        'bot_schema_json': bot_schema_json,
+                        'flow_id': process_id,
+                        'organization': organization_id
+                         }
+
+                    print('bot_data---0.3', bot_data)
+                    try:
+                        # Check if BotSchema for the given bot and flow already exists
+                        bot_schema_instance = BotSchema.objects.get(bot=bot_instance.id, flow_id=process_id)
+                        # If it exists, update the schema JSON
+                        bot_schema_instance.bot_schema_json = bot_schema_json
+                        bot_schema_instance.save()
+                    except BotSchema.DoesNotExist:
+                        bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
+
+                        if bot_schema_serializer.is_valid():
+
+                            bot_schema_instance = bot_schema_serializer.save()
+                            # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
+
+                        else:
+                            # process.delete()  # Rollback if BotSchema creation fails
+                            #bot_instance.delete()
+                            return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing Bot: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
                 # Create BotSchema instance
-                bot_schema_data = {  # bot schema serializer
-                    'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
-                    'bot_schema_json': bot_schema_json,
-                    'flow_id': process_id,
-                    'organization': organization_id
-                }
+                #bot_schema_data = {  # bot schema serializer
+                 #   'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
+                  #  'bot_schema_json': bot_schema_json,
+                  #  'flow_id': process_id,
+                  #  'organization': organization_id
+               # }
 
-                print('bot_data---0.3', bot_data)
-                bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
+                #print('bot_data---0.3', bot_data)
+                #bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
 
-                if bot_schema_serializer.is_valid():
-                    bot_schema_instance = bot_schema_serializer.save()
+                #if bot_schema_serializer.is_valid():
+                 #   bot_schema_instance = bot_schema_serializer.save()
                     # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
 
-                else:
+                #else:
                     # process.delete()  # Rollback if BotSchema creation fails
-                    bot_instance.delete()
-                    logger.error("BotSchema creation failed: %s", bot_schema_serializer.errors)
-                    return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                 #   bot_instance.delete()
+                  #  logger.error("BotSchema creation failed: %s", bot_schema_serializer.errors)
+                   # return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             # Create Integrations instances
             integrations_data = request.data.get('integrations', [])  # Get list of integrations data, default empty list
             logger.info("Integrations data: %s", integrations_data)
             for integration_data in integrations_data:
-                integration_type = integration_data.get('integration_type')
-                Integration_uid = integration_data.get('Integration_uid')
-                integration_schema_json = integration_data.get('integration_schema')
+                try:
+                    integration_type = integration_data.get('integration_type')
+                    Integration_uid = integration_data.get('Integration_uid')
+                    integration_schema_json = integration_data.get('integration_schema')
+                    process_instance = CreateProcess.objects.get(id=process_id)
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    integration_data, created = Integration.objects.update_or_create(
+                        Integration_uid=Integration_uid,
+                        flow_id=process_instance,
+                        organization=organization_instance,
+                        defaults={
+                            'integration_type': integration_type,
+                            'integration_schema': integration_schema_json
+                        }
+                        )  # integration serializer
+                    if created:
+                        logger.info("Integration created: %s", Integration_uid)
+                    else:
+                        logger.info("Integration updated: %s", Integration_uid)
+
+
+                    #return Response({"message": "Integration saved  successfully"})
+
+                except Exception as e:
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing integration: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
                 # integration_schema = json.dumps(integration_schema_json)
 
-                integration_data = {  # integration serializer
-                    'Integration_uid': Integration_uid,
-                    'integration_type': integration_type,
-                    'integration_schema': integration_schema_json,
-                    'flow_id': process_id,
-                    'organization': organization_id
-                }
-                print('integration_data---0.4', integration_data)
-                integration_serializer = IntegrationSerializer(data=integration_data)
-                if integration_serializer.is_valid():
-                    integration_instance = integration_serializer.save()
+                #integration_data = {  # integration serializer
+                 #   'Integration_uid': Integration_uid,
+                  #  'integration_type': integration_type,
+                   # 'integration_schema': integration_schema_json,
+                   # 'flow_id': process_id,
+                   # 'organization': organization_id
+               # }
+                #print('integration_data---0.4', integration_data)
+                #integration_serializer = IntegrationSerializer(data=integration_data)
+                #if integration_serializer.is_valid():
+                 #   integration_instance = integration_serializer.save()
                     # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
 
-                else:
+                #else:
                     # process.delete()  # Rollback if Integration creation fails
-                    logger.error("Integration creation failed: %s", integration_serializer.errors)
-                    return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                 #   logger.error("Integration creation failed: %s", integration_serializer.errors)
+                  #  return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             # Create FormDataInfo instances
             form_data_info_data = request.data.get('form_data_info', [])
@@ -830,6 +887,7 @@ class ProcessBuilder(APIView):
             for form_data in form_data_info_data:
                 form_name = form_data.get('form_name')
                 Form_uid = form_data.get('Form_uid')
+                logger.info("Form_uid: %s", Form_uid)
                 form_json_schema = form_data.get('form_json_schema')
                 form_description = form_data.get('form_description')
                 user_permission = form_data.get('permissions', [])
@@ -887,58 +945,113 @@ class ProcessBuilder(APIView):
                 try:
                     print("Processing rule_data...")
                     rule_id = rule_data.get('rule_uid')
+                    logger.info("Rules ID: %s", rule_id)
 
                     rule_json_schema_conditions = rule_data.get('conditions')
+                    logger.info("Rules schema_conditions: %s", rule_json_schema_conditions)
                     print("rule_json_schema_conditions:", rule_json_schema_conditions)
 
-                    # Serialize the conditions to JSON
-                    # rule_json_schema = json.dumps(rule_json_schema_conditions)
+                    
+                    process_instance = CreateProcess.objects.get(id=process_id)
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    try:
+                        rule_instance = Rule.objects.get(ruleId=rule_id, organization=organization_instance,
+                                                         processId=process_instance)
+                        rule_instance.rule_json_schema = rule_json_schema_conditions
+                        rule_instance.save()
+                        logger.info("Rule updated: %s", rule_id)
 
+                    except Rule.DoesNotExist:
+                        # If not found, create a new OCR entry
+                        Rule.objects.create(
+                            ruleId=rule_id,
+                            processId=process_instance,
+                            organization=organization_instance,
+                            rule_json_schema= rule_json_schema_conditions,
+                            
+                        )
+                        logger.info("Rule created: %s", rule_id)
                     # Prepare the data for serialization
-                    rule_data_payload = {
-                        'ruleId': rule_id,
-                        'rule_json_schema': rule_json_schema_conditions,
-                        'processId': process.id,
-                        'organization': organization_id
-                        # Assuming you have a foreign key to process in your Rule model
+                    #rule_data_payload,created = Rule.objects.update_or_create (
+                     #   ruleId=rule_id,
+                      #  processId=process_instance,
+                       # organization=organization_instance,
+                        #defaults={
+                         #   'rule_json_schema': rule_json_schema_conditions,
+                            #'processId': process_instance,
+                            #'organization': organization_instance
+                        #}
+                        #rule_json_schema= rule_json_schema_conditions,
+                        #processId= process_instance,
+                        #organization=organization_instance
+                    # Assuming you have a foreign key to process in your Rule model
+                   # )
+                    #if created:
+                     #   logger.info("New rule created: %s", rule_id)
+                    #else:
+                     #   logger.info("Rule updated: %s", rule_id)
 
-                    }
-
-                    rule_data_serializer = RuleSerializer(data=rule_data_payload)
-                    if rule_data_serializer.is_valid():
-                        rule_data_instance = rule_data_serializer.save()
-                        print(f"Rule {rule_id} saved successfully.")
-                    else:
+                    #return Response({"message": "Rules saved  successfully"})
+                    #rule_data_serializer = RuleSerializer(data=rule_data_payload)
+                    #if rule_data_serializer.is_valid():
+                     #   rule_data_instance = rule_data_serializer.save()
+                      #  print(f"Rule {rule_id} saved successfully.")
+                    #else:
                         # process.delete()  # Rollback if FormDataInfo creation fails
                         # bot_instance.delete()
                         # integration_instance.delete()
-                        logger.error("Rule creation failed: %s", rule_data_serializer.errors)
-                        return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                     #   logger.error("Rule creation failed: %s", rule_data_serializer.errors)
+                      #   return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                         # return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                 except Exception as e:
                     # process.delete()  # Rollback if any exception occurs
-                    print(f"Error occurred: {e}")
+                    logger.error("Error processing rule: %s", str(e))
                     return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             ## to get OCR component and save in process starts
             ocr_info_data = request.data.get('ocr', [])
             logger.info("OCR data: %s", ocr_info_data)
 
             for ocr_data in ocr_info_data:
-                name = ocr_data.get('name')
-                description = ocr_data.get('description')
-                ocr_uid = ocr_data.get('ocr_uid')
-                ocr_type = ocr_data.get('ocr_type')
-                organization_instance = Organization.objects.get(id=organization_id)
-                process_instance = CreateProcess.objects.get(id=process_id)
-                ocr_data, created = Ocr.objects.update_or_create(
-                    ocr_uid=ocr_uid,
-                    organization=organization_instance,
-                    name=name,
-                    description=description,
-                    flow_id=process_instance,
-                    ocr_type=ocr_type
-                )
-                return Response({"message": "OCR saved  successfully"})
+                try:
+                    name = ocr_data.get('name')
+                    description = ocr_data.get('description')
+                    ocr_uid = ocr_data.get('ocr_uid')
+                    ocr_type = ocr_data.get('ocr_type')
+                    # Check if organization_id and flow_id_id are provided in the data, otherwise use context
+                    organization_id = ocr_data.get('organization_id', organization_id)  # Default to provided context org_id
+                    flow_id_id = ocr_data.get('flow_id_id', process_id)  # Default to process_id if flow_id_id is not present
+                    # Ensure organization and process instances are fetched correctly
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    process_instance = CreateProcess.objects.get(id=flow_id_id)
+                    try:
+                        # Check if the OCR entry already exists based on ocr_uid
+                        ocr_instance = Ocr.objects.get(ocr_uid=ocr_uid, organization=organization_instance, flow_id=process_instance)
+                        # If found, update the existing OCR entry
+                        ocr_instance.name = name
+                        ocr_instance.description = description
+                        ocr_instance.ocr_type = ocr_type
+                        ocr_instance.save()
+                        logger.info("OCR updated: %s", ocr_uid)
+
+                    except Ocr.DoesNotExist:
+                        # If not found, create a new OCR entry
+                        Ocr.objects.create(
+                            ocr_uid=ocr_uid,
+                            name=name,
+                            description=description,
+                            ocr_type=ocr_type,
+                            organization=organization_instance,
+                            flow_id=process_instance
+                             )
+                        logger.info("OCR created: %s", ocr_uid)
+
+                                   
+
+                except Exception as e:
+
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing OCR: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             dms_info_data = request.data.get('dms', [])
             logger.info("DMS data: %s", dms_info_data)
@@ -1415,12 +1528,16 @@ class AutomationSetting:
                 logger.info(f"ChromeDriver installed at: {driver_path}")
                 logger.info("Initializing Chrome WebDriver...")
                 chrome_options = Options()
+                # Set the binary location explicitly
+                chrome_options.binary_location = "/usr/bin/google-chrome"  # Adjust the path as needed
+                 # Add options to run Chrome in headless mode
                 # Remove headless mode if you want a graphical interface
+                chrome_options.add_argument("--headless")
                 chrome_options.add_argument("--disable-gpu")
                 chrome_options.add_argument("--no-sandbox")
                 chrome_options.add_argument("--disable-dev-shm-usage")
                 s = Service(executable_path=driver_path)
-                AutomationSetting.driver = webdriver.Chrome(service=s)
+                AutomationSetting.driver = webdriver.Chrome(service=s, options=chrome_options)
                 AutomationSetting.driver.maximize_window()
                 logger.info("WebDriver initialized successfully.")
                 form_status['initialized'] = True  # Update form_status
@@ -1442,6 +1559,7 @@ class AutomationSetting:
             if AutomationSetting.driver is not None:
                 AutomationSetting.driver.get(url)
                 logger.info(f"Navigated to URL: {url}")
+            form_status['navigated'] = True
 
             # Update form_status
 
@@ -1458,6 +1576,8 @@ class AutomationSetting:
                 AutomationSetting.driver.quit()
                 AutomationSetting.driver = None
                 logger.info("WebDriver closed successfully.")
+            form_status['closed'] = True  # Update form_status
+
 
             # Update form_status
 
@@ -1697,17 +1817,11 @@ class AutomationView(APIView):
             print("schema_config====================", schema_config)
             input_data = data.get("input_data", {})
             print("input_data====================", input_data)
-            # Customize input data based on schema_config and view_id
-            # input_data = Customize_Input.customize_input_data(input_data, schema_config, "screen_scraping")
-            # input_data = [Inputdata_Converter.convert_to_dict(input_data)]
-            # print("input_data====================", input_data)
-            # Initialize form_status
-            # form_status = {
-            #     'initialized': False,
-            #     'updated': False,
-            #     'processed_forms_count': 0,
-            #     'error': None
-            # }
+            if not schema_config or not schema_config[0].get('form_status'):
+                form_status_view['error'] = "Invalid schema_config or form_status missing"
+                logger.error(form_status_view['error'])
+                return Response(form_status_view, status=status.HTTP_400_BAD_REQUEST)
+            logger.info(f"Input data: {input_data}")
             form_status = schema_config[0].get('form_status')[0]
 
             try:
@@ -2006,12 +2120,14 @@ class OrganizationDetailsAPIView(APIView):
             user_groups = UserGroup.objects.filter(organization=organization_id)
             bots = BotSchema.objects.filter(organization=organization_id)
             integrations = Integration.objects.filter(organization=organization_id)
+            rules = Rule.objects.filter(organization=organization_id)
 
             forms_serializer = FormDataInfoSerializer(forms, many=True)
             dms_serializer = DmsSerializer(dms_records, many=True)
             user_groups_serializer = UserGroupSerializer(user_groups, many=True)
             bots_serializer = BotSchemaSerializer(bots, many=True)
             integrations_serializer = IntegrationSerializer(integrations, many=True)
+            rule_serializer = RuleSerializer(rules,many=True)
 
             bots_data = []
             for bot in bots_serializer.data:
@@ -2021,15 +2137,34 @@ class OrganizationDetailsAPIView(APIView):
                     "flow_id": bot["flow_id"],
                     "organization": bot["organization"],
                 }
-                bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
-                if bot_info:
-                    bot_data.update({
-                        "name": bot_info.get("name", ""),
-                        "bot_name": bot_info.get("bot_name", ""),
-                        "bot_description": bot_info.get("bot_description", ""),
-                        "bot_uid": bot_info.get("bot_uid"),
-                    })
-                bots_data.append(bot_data)
+                bot_id = bot["bot"]
+            try:
+                related_bot = Bot.objects.get(id=bot_id)
+                bot_data.update({
+                    "name": related_bot.name,
+                    "bot_name": related_bot.bot_name,
+                    "bot_description": related_bot.bot_description,
+                    "bot_uid": related_bot.bot_uid,
+                })
+            except Bot.DoesNotExist:
+                bot_data.update({
+                    "name": "",
+                    "bot_name": "",
+                    "bot_description": "",
+                    "bot_uid": None,
+                })
+            # Log the bots_data for debugging purposes
+            logger.debug("Bots data: %s", bots_data)
+
+                #bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
+                #if bot_info:
+                 #   bot_data.update({
+                  #      "name": bot_info.get("name", ""),
+                   #     "bot_name": bot_info.get("bot_name", ""),
+                    #    "bot_description": bot_info.get("bot_description", ""),
+                     #   "bot_uid": bot_info.get("bot_uid"),
+                   # })
+            bots_data.append(bot_data)
 
 
             data = {
@@ -2038,6 +2173,7 @@ class OrganizationDetailsAPIView(APIView):
                 'user_groups': user_groups_serializer.data,
                 'bots': bots_data,
                 'integrations': integrations_serializer.data,
+                'rules':rule_serializer.data
             }
 
             return Response(data, status=status.HTTP_200_OK)

@@ -54,9 +54,10 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError, transaction
 import logging  # log messages
 
-logger = logging.getLogger(__name__)
+#logger = logging.getLogger(__name__)
+logger = logging.getLogger('form_generator')
 
-
+#logger = logging.getLogger('formbuilder_backend')
 class FormGeneratorAPIView(APIView):
     """
     1.1
@@ -991,8 +992,10 @@ class CaseRelatedFormView(APIView):
     """
 
     def get(self, request, organization_id, process_id, pk=None):
+        logger.info("Case Related Form view")
         if pk is None:
             cases = Case.objects.filter(organization_id=organization_id, processId=process_id)
+            logger.info(" case: %s", cases)
             serializer = CaseSerializer(cases, many=True)
             serialized_data = serializer.data
 
@@ -1015,10 +1018,12 @@ class CaseRelatedFormView(APIView):
         else:
             try:
                 case = Case.objects.get(pk=pk, organization_id=organization_id, processId=process_id)
+                logger.info(" case: %s", case)
             except Case.DoesNotExist:
                 return Response({'error': 'Case not found'}, status=404)
 
             next_step = case.next_step
+            logger.info(" next_step: %s", next_step)
             print("next_step", next_step)
 
             try:
@@ -1030,9 +1035,25 @@ class CaseRelatedFormView(APIView):
 
             try:
                 ocr_data = Ocr.objects.get(ocr_uid=next_step, organization=organization_id, flow_id=process_id)
-
+                logger.info(" ocr_data: %s", ocr_data)
             except Ocr.DoesNotExist:
                 ocr_data = None
+            try:
+
+                rule_schema = Rule.objects.get(ruleId=next_step, organization=organization_id,
+                                                            processId=process_id)
+                return self.handle_case_step(request, pk)
+
+            except Rule.DoesNotExist:
+                rule_schema = None
+            try:
+
+                api_schema = Integration.objects.get(Integration_uid=next_step, organization=organization_id,
+                                                            flow_id=process_id)
+                return self.handle_case_step(request, pk)
+
+            except Integration.DoesNotExist:
+                api_schema = None
 
             # Initialize response data with case information
             response_data = {
@@ -1046,8 +1067,9 @@ class CaseRelatedFormView(APIView):
 
             # Include OCR data if it exists
             if ocr_data:
-                ocr_data_list = Ocr.objects.filter(organization=organization_id, flow_id=process_id)
+                ocr_data_list = Ocr.objects.filter(ocr_uid=next_step,organization=organization_id, flow_id=process_id)
                 serializer = OcrSerializer(ocr_data_list, many=True)
+                logger.info("schemacccccccccccccccc %s",serializer.data[0])
                 response_data['ocr_schema'] = serializer.data[0]  # Assuming only one OCR schema is needed
 
 
@@ -1123,6 +1145,7 @@ class CaseRelatedFormView(APIView):
 
             # get next step 'start' and 'end' from participants json schema BGN
             cs_next_step = case.next_step
+            logger.info("cs_next_step $$$$$$$$$$$$$$$$$$$$$$$$$$$$ : %s", cs_next_step)
             print("cs_next_step", cs_next_step)
             process_data = CreateProcess.objects.get(pk=process_id.pk)
             participants_data = process_data.participants
@@ -1939,9 +1962,12 @@ class CaseRelatedFormView(APIView):
                         return actions
 
                     print('--- Rule starts --- 1')
+                    logger.info("Activity startsssssssssssssssssss")
                     rule_id_ref = rule.id
+                    logger.info("rule_id_refffffffffffff %s",rule_id_ref)
 
                     rule_input_data = rule.rule_json_schema
+                    logger.info("form_id_refffffffffffff %s",rule_input_data)
                     print("rule_input_data", rule_input_data)
 
                     # Extract sources and value_sources into sets
@@ -2031,7 +2057,7 @@ class CaseRelatedFormView(APIView):
                         except Exception as e:
                             print(f"Error processing integration details: {e}")
                             traceback.print_exc()
-
+                    
                     # for item in filtered_rule_table: try: extracted_data.append(json.loads(item.rule_json_schema)
                     # if isinstance(item.rule_json_schema, str) else item.rule_json_schema) except Exception as e:
                     # print(f"Error processing rule table data: {e}") traceback.print_exc()
@@ -2039,7 +2065,7 @@ class CaseRelatedFormView(APIView):
                     try:
                         actions = evaluate_rules(rule_input_data, extracted_data)
                         # Print the actions to be taken
-                        print("Actions to be taken:", actions)
+                        logger.info("Actions to be taken:", actions)
                         final_flow_key = []
                         final_flow_start = []
                         if actions:
@@ -2113,6 +2139,7 @@ class CaseRelatedFormView(APIView):
                         print("^^^^^^^^^^^^^^^^^^^^^", request.data)
                         data_json = request.data.get('data_json', None)
                         # data_json_str = request.data['data_json']
+                        logger.info("data_json_str %s",data_json)
                         print("data_json_str", data_json)
                         # Flatten the data_json structure
                         flattened_data_json = {}
@@ -2130,7 +2157,7 @@ class CaseRelatedFormView(APIView):
                             'ocr_uid': ocr_id_ref,
                             'flow_id': process_id,
                             'organization': organization_id,
-                            'data_schema': flattened_data_json,  # JSON list (need to change)
+                            'data_schema': data_json,  # JSON list (need to change)
                             'case_id': caseId,
                         }
 
@@ -2183,6 +2210,7 @@ class CaseRelatedFormView(APIView):
                     case_data.path_json = []
                 # Append next_step to path_json
                 case_data.path_json.append(case_data.next_step)
+                case_data.next_step = current_step_id
                 case_data.save()
 
                 # Check the end form id
