@@ -85,13 +85,6 @@ from requests.auth import HTTPBasicAuth
 from rest_framework.exceptions import NotFound
 from django.core.exceptions import ObjectDoesNotExist
 
-from PIL import Image, ImageDraw
-from ultralytics import YOLO
-import easyocr
-import numpy as np
-import tempfile
-from pypdf import PdfReader
-import ocrmypdf
 from datetime import datetime
 
 # import for OCR Components ends ######################################
@@ -129,7 +122,6 @@ logger = logging.getLogger('formbuilder_backend')  # Replace 'myapp' with the na
 IGNORE_ERRORS = [
     "web view not found"
 ]
-
 
 
 class ListProcessesByOrganization(APIView):
@@ -315,10 +307,11 @@ class BotListCreateView(generics.ListCreateAPIView):
             logger.error(f"Invalid bot data: {bot_serializer.errors}")
             return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         print("bot_instance", bot_instance.id)
+        flow_id = bot_data.get('flow_id', None)
         bot_schema_data = {
             'bot': bot_instance.id,
             'bot_schema_json': bot_schema_json,
-            'flow_id': None,  # Assuming flow_id is not provided in the input
+            'flow_id': flow_id,  # Assuming flow_id is not provided in the input
             'organization': organization_id
         }
         logger.debug(f"bot_schema_data: {bot_schema_data}")
@@ -518,8 +511,6 @@ class DashboardListCreateView(generics.ListCreateAPIView):
             logger.error(f"Unexpected error while creating dashboard: {e}")
             raise ValidationError("An unexpected error occurred while creating the dashboard.")
 
-
-
     def create(self, request, *args, **kwargs):
         try:
             return super().create(request, *args, **kwargs)
@@ -530,7 +521,6 @@ class DashboardListCreateView(generics.ListCreateAPIView):
 class DashboardRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DashboardSerializer
     queryset = Dashboard.objects.all()
-
 
     def get_queryset(self):
         organization_id = self.kwargs.get('organization_id')
@@ -757,72 +747,116 @@ class ProcessBuilder(APIView):
             bots_data = request.data.get('bots', [])  # Get list of bots data, default empty list
             logger.info("Bots data: %s", bots_data)
             for bot_data in bots_data:
-                bot_name = bot_data.get('bot_name')
-                bot_uid = bot_data.get('bot_uid')
-                bot_description = bot_data.get('bot_description')
-                bot_schema_json = bot_data.get('bot_schema_json')
+                try:
+                    bot_name = bot_data.get('bot_name')
+                    bot_uid = bot_data.get('bot_uid')
+                    bot_description = bot_data.get('bot_description')
+                    bot_schema_json = bot_data.get('bot_schema_json')
 
-                bot_data = {  # bot serializer
-                    'bot_uid': bot_uid,
-                    'bot_name': bot_name,
-                    'bot_description': bot_description,
-                }
-                print('bot_data---0.2', bot_data)
-                bot_serializer = BotSerializer(data=bot_data)
-                if bot_serializer.is_valid():
-                    bot_instance = bot_serializer.save()
-                else:
-                    process.delete()  # Rollback if Bot creation fails
-                    logger.error("Bot creation failed: %s", bot_serializer.errors)
-                    return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    bot_data = {  # bot serializer
+                        'bot_uid': bot_uid,
+                        'bot_name': bot_name,
+                        'bot_description': bot_description,
+                    }
+                    print('bot_data---0.2', bot_data)
+                    # Use update_or_create to either update an existing bot or create a new one
+                    bot_instance, created = Bot.objects.update_or_create(
+                        bot_uid=bot_uid,  # Unique field to check for an existing bot
+                        defaults={
+                            'bot_name': bot_name,
+                            'bot_description': bot_description,
+                        }
+                    )
 
-                # Create BotSchema instance
-                bot_schema_data = {  # bot schema serializer
-                    'bot': bot_instance.id,  # Assign the primary key (ID) of the bot instance
-                    'bot_schema_json': bot_schema_json,
-                    'flow_id': process_id,
-                    'organization': organization_id
-                }
+                    if created:
+                        logger.info("Bot created: %s", bot_instance.id)
+                    else:
+                        logger.info("Bot updated: %s", bot_instance.id)
+                    # bot_serializer = BotSerializer(data=bot_data)
+                    # if bot_serializer.is_valid():
+                    #     bot_instance = bot_serializer.save()
+                    # else:
+                    #     # process.delete()  # Rollback if Bot creation fails
+                    #     logger.error("Bot creation failed: %s", bot_serializer.errors)
+                    #     return Response(bot_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-                print('bot_data---0.3', bot_data)
-                bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
+                    # Create BotSchema instance
+                    bot_schema_data, schema_created  = BotSchema.objects.update_or_create(
+                        bot=bot_instance,
+                        flow_id=process_id,
+                        organization=organization_id,  # Assign the primary key (ID) of the bot instance
+                        defaults={
+                            'bot_schema_json': bot_schema_json
+                        }
+                    )
+                    if schema_created:
+                        logger.info("Bot created: %s", bot_instance.id)
+                    else:
+                        logger.info("Bot updated: %s", bot_instance.id)
 
-                if bot_schema_serializer.is_valid():
-                    bot_schema_instance = bot_schema_serializer.save()
-                    # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
+                    return Response({"message": "Bot saved  successfully"})
 
-                else:
-                    # process.delete()  # Rollback if BotSchema creation fails
-                    bot_instance.delete()
-                    logger.error("BotSchema creation failed: %s", bot_schema_serializer.errors)
-                    return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing Bot: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                # print('bot_data---0.3', bot_data)
+                # bot_schema_serializer = BotSchemaSerializer(data=bot_schema_data)
+                #
+                # if bot_schema_serializer.is_valid():
+                #     bot_schema_instance = bot_schema_serializer.save()
+                #     # return Response({"message": "Bot created successfully"}, status=status.HTTP_201_CREATED)
+                #
+                # else:
+                #     # process.delete()  # Rollback if BotSchema creation fails
+                #     bot_instance.delete()
+                #     logger.error("BotSchema creation failed: %s", bot_schema_serializer.errors)
+                #     return Response(bot_schema_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             # Create Integrations instances
-            integrations_data = request.data.get('integrations', [])  # Get list of integrations data, default empty list
+            integrations_data = request.data.get('integrations',
+                                                 [])  # Get list of integrations data, default empty list
             logger.info("Integrations data: %s", integrations_data)
             for integration_data in integrations_data:
-                integration_type = integration_data.get('integration_type')
-                Integration_uid = integration_data.get('Integration_uid')
-                integration_schema_json = integration_data.get('integration_schema')
+                try:
+                    integration_type = integration_data.get('integration_type')
+                    Integration_uid = integration_data.get('Integration_uid')
+                    integration_schema_json = integration_data.get('integration_schema')
 
-                # integration_schema = json.dumps(integration_schema_json)
+                    # integration_schema = json.dumps(integration_schema_json)
+                    process_instance = CreateProcess.objects.get(id=process_id)
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    integration_data, created = Integration.objects.update_or_create(
+                        Integration_uid=Integration_uid,
+                        flow_id=process_id,
+                        organization=organization_id,
+                        defaults={
+                            'integration_type': integration_type,
+                            'integration_schema': integration_schema_json
+                        }
+                    )  # integration serializer
 
-                integration_data = {  # integration serializer
-                    'Integration_uid': Integration_uid,
-                    'integration_type': integration_type,
-                    'integration_schema': integration_schema_json,
-                    'flow_id': process_id,
-                    'organization': organization_id
-                }
-                print('integration_data---0.4', integration_data)
-                integration_serializer = IntegrationSerializer(data=integration_data)
-                if integration_serializer.is_valid():
-                    integration_instance = integration_serializer.save()
-                    # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
+                    if created:
+                        logger.info("Integration created: %s", Integration_uid)
+                    else:
+                        logger.info("Integration updated: %s", Integration_uid)
 
-                else:
-                    # process.delete()  # Rollback if Integration creation fails
-                    logger.error("Integration creation failed: %s", integration_serializer.errors)
-                    return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({"message": "Integration saved  successfully"})
+
+                except Exception as e:
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing integration: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                # integration_serializer = IntegrationSerializer(data=integration_data)
+                # if integration_serializer.is_valid():
+                #     integration_instance = integration_serializer.save()
+                #     # return Response({"message": "Integrations successfully"}, status=status.HTTP_201_CREATED)
+                #
+                # else:
+                #     # process.delete()  # Rollback if Integration creation fails
+                #     logger.error("Integration creation failed: %s", integration_serializer.errors)
+                #     return Response(integration_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             # Create FormDataInfo instances
             form_data_info_data = request.data.get('form_data_info', [])
@@ -830,12 +864,17 @@ class ProcessBuilder(APIView):
             for form_data in form_data_info_data:
                 form_name = form_data.get('form_name')
                 Form_uid = form_data.get('Form_uid')
+                logger.info("Form_uid: %s", Form_uid)
                 form_json_schema = form_data.get('form_json_schema')
                 form_description = form_data.get('form_description')
                 user_permission = form_data.get('permissions', [])
                 # print("user_permissionssssssssssssss", user_permission)
                 # user_group = user_permission[0]['user_group']
-                #
+                # Check if organization_id and flow_id_id are provided in the data, otherwise use context
+                organization_id = form_data.get('organization_id',
+                                               organization_id)  # Default to provided context org_id
+                process_id = form_data.get('process_id',
+                                          process_id)
                 # print("user_group_id", user_group)
                 process_instance = CreateProcess.objects.get(id=process_id)
                 organization_instance = Organization.objects.get(id=organization_id)
@@ -879,7 +918,6 @@ class ProcessBuilder(APIView):
             rule_data_info_list = request.data.get('rules', {})
             logger.info("Rules data: %s", rule_data_info_list)
 
-
             # Extract the list of rule conditions
             rules = rule_data_info_list.get('RuleConditions', [])
             # Process each rule
@@ -887,58 +925,123 @@ class ProcessBuilder(APIView):
                 try:
                     print("Processing rule_data...")
                     rule_id = rule_data.get('rule_uid')
-
+                    logger.info("Rules ID: %s", rule_id)
                     rule_json_schema_conditions = rule_data.get('conditions')
+                    logger.info("Rules schema_conditions: %s", rule_json_schema_conditions)
                     print("rule_json_schema_conditions:", rule_json_schema_conditions)
-
+                    # Check if organization_id and flow_id_id are provided in the data, otherwise use context
+                    organization_id = rule_data.get('organization_id',
+                                                    organization_id)  # Default to provided context org_id
+                    process_id = rule_data.get('process_id',
+                                               process_id)
                     # Serialize the conditions to JSON
                     # rule_json_schema = json.dumps(rule_json_schema_conditions)
+                    # print("user_group_id", user_group)
+                    process_instance = CreateProcess.objects.get(id=process_id)
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    # Check if the OCR entry already exists based on ocr_uid
+                    try:
+                        rule_instance = Rule.objects.get(ruleId=rule_id, organization=organization_instance,
+                                                         processId=process_instance)
+                        rule_instance.rule_json_schema = rule_json_schema_conditions
+                        rule_instance.save()
+                        logger.info("Rule updated: %s", rule_id)
 
-                    # Prepare the data for serialization
-                    rule_data_payload = {
-                        'ruleId': rule_id,
-                        'rule_json_schema': rule_json_schema_conditions,
-                        'processId': process.id,
-                        'organization': organization_id
-                        # Assuming you have a foreign key to process in your Rule model
+                    except Rule.DoesNotExist:
+                        # If not found, create a new OCR entry
+                        Rule.objects.create(
+                            ruleId=rule_id,
+                            processId=process_instance,
+                            organization=organization_instance,
+                            defaults={
+                                'rule_json_schema': rule_json_schema_conditions
+                            }
+                        )
+                        logger.info("Rule created: %s", rule_id)
 
-                    }
+                    # # Prepare the data for serialization
+                    # rule_data_payload, created = Rule.objects.update_or_create(
+                    #     ruleId=rule_id,
+                    #     processId=process_instance,
+                    #     organization=organization_instance,
+                    #     defaults={
+                    #         'rule_json_schema': rule_json_schema_conditions
+                    #
+                    #     }
+                    #
+                    #     # Assuming you have a foreign key to process in your Rule model
+                    # )
+                    # if created:
+                    #     logger.info("New rule created: %s", rule_id)
+                    # else:
+                    #     logger.info("Rule updated: %s", rule_id)
+                    #
+                    # return Response({"message": "Rules saved  successfully"})
 
-                    rule_data_serializer = RuleSerializer(data=rule_data_payload)
-                    if rule_data_serializer.is_valid():
-                        rule_data_instance = rule_data_serializer.save()
-                        print(f"Rule {rule_id} saved successfully.")
-                    else:
-                        # process.delete()  # Rollback if FormDataInfo creation fails
-                        # bot_instance.delete()
-                        # integration_instance.delete()
-                        logger.error("Rule creation failed: %s", rule_data_serializer.errors)
-                        return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-                        # return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    # rule_data_serializer = RuleSerializer(data=rule_data_payload)
+                    # if rule_data_serializer.is_valid():
+                    #     rule_data_instance = rule_data_serializer.save()
+                    #     print(f"Rule {rule_id} saved successfully.")
+                    # else:
+                    #     # process.delete()  # Rollback if FormDataInfo creation fails
+                    #     # bot_instance.delete()
+                    #     # integration_instance.delete()
+                    #     logger.error("Rule creation failed: %s", rule_data_serializer.errors)
+                    #     return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    #     # return Response(rule_data_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                 except Exception as e:
                     # process.delete()  # Rollback if any exception occurs
-                    print(f"Error occurred: {e}")
+                    logger.error("Error processing rule: %s", str(e))
                     return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             ## to get OCR component and save in process starts
             ocr_info_data = request.data.get('ocr', [])
             logger.info("OCR data: %s", ocr_info_data)
 
             for ocr_data in ocr_info_data:
-                name = ocr_data.get('name')
-                description = ocr_data.get('description')
-                ocr_uid = ocr_data.get('ocr_uid')
-                ocr_type = ocr_data.get('ocr_type')
-                organization_instance = Organization.objects.get(id=organization_id)
-                process_instance = CreateProcess.objects.get(id=process_id)
-                ocr_data, created = Ocr.objects.update_or_create(
-                    ocr_uid=ocr_uid,
-                    organization=organization_instance,
-                    name=name,
-                    description=description,
-                    flow_id=process_instance,
-                    ocr_type=ocr_type
-                )
-                return Response({"message": "OCR saved  successfully"})
+                try:
+                    name = ocr_data.get('name')
+                    description = ocr_data.get('description')
+                    ocr_uid = ocr_data.get('ocr_uid')
+                    ocr_type = ocr_data.get('ocr_type')
+                    # Check if organization_id and flow_id_id are provided in the data, otherwise use context
+                    organization_id = ocr_data.get('organization_id',
+                                                   organization_id)  # Default to provided context org_id
+                    flow_id_id = ocr_data.get('flow_id_id',
+                                              process_id)  # Default to process_id if flow_id_id is not present
+                    # Ensure organization and process instances are fetched correctly
+                    organization_instance = Organization.objects.get(id=organization_id)
+                    process_instance = CreateProcess.objects.get(id=flow_id_id)
+
+                    # Check if the OCR entry already exists based on ocr_uid
+                    try:
+                        ocr_instance = Ocr.objects.get(ocr_uid=ocr_uid, organization=organization_instance,
+                                                       flow_id=process_instance)
+                        # If found, update the existing OCR entry
+                        ocr_instance.name = name
+                        ocr_instance.description = description
+                        ocr_instance.ocr_type = ocr_type
+                        ocr_instance.save()
+                        logger.info("OCR updated: %s", ocr_uid)
+
+                    except Ocr.DoesNotExist:
+                        # If not found, create a new OCR entry
+                        Ocr.objects.create(
+                            ocr_uid=ocr_uid,
+                            name=name,
+                            description=description,
+                            ocr_type=ocr_type,
+                            organization=organization_instance,
+                            flow_id=process_instance
+                        )
+                        logger.info("OCR created: %s", ocr_uid)
+
+
+
+                except Exception as e:
+                    # process.delete()  # Rollback if any exception occurs
+                    logger.error("Error processing OCR: %s", str(e))
+                    return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                # return Response({"message": "OCR saved  successfully"})
 
             dms_info_data = request.data.get('dms', [])
             logger.info("DMS data: %s", dms_info_data)
@@ -961,6 +1064,11 @@ class ProcessBuilder(APIView):
                     flow_id=process_instance,
                     config_details_schema=config_details
                 )
+                if created:
+                    logger.info("DMS Data created: %s", dms_uid)
+                else:
+                    logger.info("DMS Data updated: %s", dms_uid)
+
                 return Response({"message": "DMS created successfully"})
 
             ## to get OCR component and save in process ends
@@ -971,6 +1079,7 @@ class ProcessBuilder(APIView):
             # process.delete()  # Rollback if any exception occurs
             logger.error("Error occurred during processing: %s", str(e))
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 ############################## Google Drive Extraction Bot Functionality ######################################
 
@@ -1005,7 +1114,7 @@ def get_google_drive_service():
         return None
 
 
-#return build('drive', 'v3', credentials=creds)
+# return build('drive', 'v3', credentials=creds)
 
 
 # Download the file from drive and store
@@ -1118,7 +1227,7 @@ def list_drive_files(request):
     try:
         results = drive_service.files().list(q=query).execute()
 
-        print("results",results)
+        print("results", results)
     except HttpError as error:
         return Response({"error": f"An error occurred: {error}"}, status=400)
 
@@ -1153,27 +1262,35 @@ def list_drive_files(request):
 
 
 @api_view(['POST'])
-def convert_excel_to_json1(request):
+def convert_excel_to_json(request):
     try:
         # Get the JSON data from the request
         input_data = json.loads(request.body.decode('utf-8'))
 
         # Validate input data
-        if 'file_name' not in input_data or 'column_definitions' not in input_data:
+        if 'column_definitions' not in input_data:
             logger.error('Missing required fields in input JSON')
             return JsonResponse({"error": "Missing required fields in input JSON"}, status=400)
 
-        file_name = input_data['file_name']
-        sheet_name = input_data.get('sheet_name')
         column_definitions = input_data['column_definitions']
-        file_path = input_data['file_path']
 
-        # Read the Excel file
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        # Determine if file is provided directly or by name
+        if 'file_name' in input_data:
+            file_name = input_data['file_name']
+            # Read the Excel file by file name
+            df = pd.read_excel(file_name, sheet_name=input_data.get('sheet_name'))
+        elif 'file' in request.FILES:
+            file = request.FILES['file']
+            # Read the Excel file directly from the uploaded file
+            df = pd.read_excel(file, sheet_name=input_data.get('sheet_name'))
+        else:
+            logger.error('No file provided in input')
+            return JsonResponse({"error": "No file provided in input"}, status=400)
 
         # Initialize a new dictionary to hold the final column names
         final_columns = {}
         files = []
+
         # Process the column definitions to map the columns
         for definition in column_definitions:
             column_key = definition['column_key']
@@ -1199,7 +1316,6 @@ def convert_excel_to_json1(request):
         # Convert DataFrame to JSON
         json_data = df.to_json(orient='records', date_format='iso')
 
-
         # Transform JSON data into the desired format
         transformed_data = []
         for record in json.loads(json_data):
@@ -1217,16 +1333,13 @@ def convert_excel_to_json1(request):
                     "value_type": value_type
                 })
 
-        logger.info(f"Updated BotData entry for file: {file_name}")
+        logger.info(f"Processed Excel data from file: {input_data.get('file_name', 'uploaded file')}")
         # Return the JSON data
-        # return JsonResponse(json.loads(json_data), safe=False)
         response_data = {
             "data": transformed_data
         }
         files.append(response_data)
         return JsonResponse(response_data, safe=False)
-        # Return the JSON data
-        # return JsonResponse({"files": files}, safe=False)
 
     except json.JSONDecodeError as e:
         logger.error(f'Error decoding JSON: {str(e)}')
@@ -1234,114 +1347,94 @@ def convert_excel_to_json1(request):
     except Exception as e:
         logger.error(f'Unexpected error: {str(e)}')
         return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+
+
+# @api_view(['POST'])
+# def convert_excel_to_json(request):
+#     try:
+#         # Get the JSON data from the request
+#         input_data = json.loads(request.body.decode('utf-8'))
+#
+#         # Validate input data
+#         if 'file_name' not in input_data or 'column_definitions' not in input_data:
+#             logger.error('Missing required fields in input JSON')
+#             return JsonResponse({"error": "Missing required fields in input JSON"}, status=400)
+#
+#         file_name = input_data['file_name']
+#         sheet_name = input_data.get('sheet_name')
+#         column_definitions = input_data['column_definitions']
+#         # file_path = input_data['file_path']
+#
+#         # Read the Excel file
+#         df = pd.read_excel(file_name, sheet_name=sheet_name)
+#
+#         # Initialize a new dictionary to hold the final column names
+#         final_columns = {}
+#         files = []
+#         # Process the column definitions to map the columns
+#         for definition in column_definitions:
+#             column_key = definition['column_key']
+#             field_labels = definition['field_labels']
+#
+#             for col in df.columns:
+#                 if col in field_labels:
+#                     final_columns[col] = column_key
+#                     break
+#
+#         # Check if all required columns are mapped
+#         if len(final_columns) != len(column_definitions):
+#             missing_columns = set([d['column_key'] for d in column_definitions]) - set(final_columns.values())
+#             logger.error(f'Missing columns in Excel: {missing_columns}')
+#             return JsonResponse({"error": f"Missing columns in Excel: {missing_columns}"}, status=400)
+#
+#         # Rename the columns based on the mapping found
+#         df = df.rename(columns=final_columns)
+#
+#         # Select only the columns specified in the final mapping
+#         df = df[list(final_columns.values())]
+#
+#         # Convert DataFrame to JSON
+#         json_data = df.to_json(orient='records', date_format='iso')
+#
+#
+#         # Transform JSON data into the desired format
+#         transformed_data = []
+#         for record in json.loads(json_data):
+#             for key, value in record.items():
+#                 value_type = "String"
+#                 if isinstance(value, bool):
+#                     value_type = "Boolean"
+#                 elif isinstance(value, (int, float)):
+#                     value_type = "Number"
+#                 elif isinstance(value, pd.Timestamp):
+#                     value_type = "Date"
+#                 transformed_data.append({
+#                     "field_id": key,
+#                     "value": value,
+#                     "value_type": value_type
+#                 })
+#
+#         logger.info(f"Updated BotData entry for file: {file_name}")
+#         # Return the JSON data
+#         # return JsonResponse(json.loads(json_data), safe=False)
+#         response_data = {
+#             "data": transformed_data
+#         }
+#         files.append(response_data)
+#         return JsonResponse(response_data, safe=False)
+#         # Return the JSON data
+#         # return JsonResponse({"files": files}, safe=False)
+#
+#     except json.JSONDecodeError as e:
+#         logger.error(f'Error decoding JSON: {str(e)}')
+#         return JsonResponse({"error": f"Error decoding JSON: {str(e)}"}, status=400)
+#     except Exception as e:
+#         logger.error(f'Unexpected error: {str(e)}')
+#         return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
 
 
 ########################## Google Drive END ##########################
-@api_view(['POST'])
-def convert_excel_to_json(request):
-    try:
-        # Check if a file is provided directly in the request
-        uploaded_file = request.FILES.get('file', None)
 
-        # If no file is uploaded, check for file_name in the input data
-        if not uploaded_file:
-            input_data = json.loads(request.body.decode('utf-8'))
-
-            # Validate input data for file_name and column definitions
-            if 'file_name' not in input_data or 'column_definitions' not in input_data:
-                logger.error('Missing required fields in input JSON')
-                return JsonResponse({"error": "Missing required fields in input JSON"}, status=400)
-
-            file_name = input_data['file_name']
-            sheet_name = input_data.get('sheet_name')  # Optional sheet name
-            column_definitions = input_data['column_definitions']
-
-            # Assuming the file is stored locally; update path as needed
-            file_path = os.path.join('path/to/files/directory', file_name)
-
-            # Check if the file exists
-            if not os.path.exists(file_path):
-                logger.error(f'File not found: {file_name}')
-                return JsonResponse({"error": f"File not found: {file_name}"}, status=404)
-
-            # Read the Excel file from the file path
-            df = pd.read_excel(file_path, sheet_name=sheet_name)
-        else:
-            # If a file is uploaded, process it directly
-            input_data = json.loads(request.body.decode('utf-8'))
-
-            # Validate input data for column definitions
-            if 'column_definitions' not in input_data:
-                logger.error('Missing column_definitions in input JSON')
-                return JsonResponse({"error": "Missing column_definitions in input JSON"}, status=400)
-
-            column_definitions = input_data['column_definitions']
-            sheet_name = input_data.get('sheet_name')  # Optional sheet name
-
-            # Read the Excel file from the uploaded file
-            df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
-
-        # Initialize a new dictionary to hold the final column names
-        final_columns = {}
-        files = []
-
-        # Process the column definitions to map the columns
-        for definition in column_definitions:
-            column_key = definition['column_key']
-            field_labels = definition['field_labels']
-
-            for col in df.columns:
-                if col in field_labels:
-                    final_columns[col] = column_key
-                    break
-
-        # Check if all required columns are mapped
-        if len(final_columns) != len(column_definitions):
-            missing_columns = set([d['column_key'] for d in column_definitions]) - set(final_columns.values())
-            logger.error(f'Missing columns in Excel: {missing_columns}')
-            return JsonResponse({"error": f"Missing columns in Excel: {missing_columns}"}, status=400)
-
-        # Rename the columns based on the mapping found
-        df = df.rename(columns=final_columns)
-
-        # Select only the columns specified in the final mapping
-        df = df[list(final_columns.values())]
-
-        # Convert DataFrame to JSON
-        json_data = df.to_json(orient='records', date_format='iso')
-
-        # Transform JSON data into the desired format
-        transformed_data = []
-        for record in json.loads(json_data):
-            for key, value in record.items():
-                value_type = "String"
-                if isinstance(value, bool):
-                    value_type = "Boolean"
-                elif isinstance(value, (int, float)):
-                    value_type = "Number"
-                elif isinstance(value, pd.Timestamp):
-                    value_type = "Date"
-                transformed_data.append({
-                    "field_id": key,
-                    "value": value,
-                    "value_type": value_type
-                })
-
-        logger.info(f"Processed file successfully")
-
-        # Return the JSON data
-        response_data = {
-            "data": transformed_data
-        }
-        files.append(response_data)
-        return JsonResponse(response_data, safe=False)
-
-    except json.JSONDecodeError as e:
-        logger.error(f'Error decoding JSON: {str(e)}')
-        return JsonResponse({"error": f"Error decoding JSON: {str(e)}"}, status=400)
-    except Exception as e:
-        logger.error(f'Unexpected error: {str(e)}')
-        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
 
 ##################### API Integration and screen scraping BGN #############
 
@@ -1432,8 +1525,6 @@ class AutomationSetting:
                 form_status['error'] = f"Error initializing WebDriver: {e}"
                 logger.error(f"An unexpected error occurred: {e}")
                 raise
-
-
 
     @staticmethod
     def navigate_to(url, form_status):
@@ -1920,15 +2011,15 @@ class APIIntegrationView(APIView):
             process_status = schema_config.get('status')
             print("process_status----------", process_status)
 
-
             # print(process_status)
             if not input_data or not schema_config:
                 process_status = "Invalid input data or Schema configuration."
                 logger.warning(process_status)
                 return Response({"error": process_status}, status=status.HTTP_400_BAD_REQUEST)
 
-            response_data, process_status, schema_config_status = APISetting.make_request(input_data, schema_config, process_status)
-            print("process_status $$$$$$$$$$$$$$$$$$$",process_status)
+            response_data, process_status, schema_config_status = APISetting.make_request(input_data, schema_config,
+                                                                                          process_status)
+            print("process_status $$$$$$$$$$$$$$$$$$$", process_status)
             logger.info(schema_config_status)
             if process_status == "completed":
                 return Response({"response_data": response_data, "status": schema_config_status},
@@ -1955,7 +2046,6 @@ class APIIntegrationView(APIView):
             process_status = f"An unexpected error occurred: {e}"
             logger.error(process_status)
             return Response({"error": process_status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 @csrf_exempt
@@ -1994,6 +2084,7 @@ class OrganizationBasedProcess(APIView):
             logger.error(f"Error retrieving processes for organization ID {organization_id}: {str(e)}")
             return Response({"error": "Failed to retrieve processes"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class OrganizationDetailsAPIView(APIView):
     """
     Organization based details starts
@@ -2006,13 +2097,14 @@ class OrganizationDetailsAPIView(APIView):
             user_groups = UserGroup.objects.filter(organization=organization_id)
             bots = BotSchema.objects.filter(organization=organization_id)
             integrations = Integration.objects.filter(organization=organization_id)
+            rules = Rule.objects.filter(organization=organization_id)
 
             forms_serializer = FormDataInfoSerializer(forms, many=True)
             dms_serializer = DmsSerializer(dms_records, many=True)
             user_groups_serializer = UserGroupSerializer(user_groups, many=True)
             bots_serializer = BotSchemaSerializer(bots, many=True)
             integrations_serializer = IntegrationSerializer(integrations, many=True)
-
+            rule_serializer = RuleSerializer(rules, many=True)
             bots_data = []
             for bot in bots_serializer.data:
                 bot_data = {
@@ -2022,6 +2114,8 @@ class OrganizationDetailsAPIView(APIView):
                     "organization": bot["organization"],
                 }
                 bot_info = bot.get("bot", None)  # Safely get "bot" if it exists
+
+                logger.info("bot_info: %s", bot_info)
                 if bot_info:
                     bot_data.update({
                         "name": bot_info.get("name", ""),
@@ -2031,13 +2125,13 @@ class OrganizationDetailsAPIView(APIView):
                     })
                 bots_data.append(bot_data)
 
-
             data = {
                 'forms': forms_serializer.data,
                 'dms': dms_serializer.data,
                 'user_groups': user_groups_serializer.data,
                 'bots': bots_data,
                 'integrations': integrations_serializer.data,
+                'rules': rule_serializer.data
             }
 
             return Response(data, status=status.HTTP_200_OK)
@@ -2060,6 +2154,7 @@ class OrganizationDetailsAPIView(APIView):
             logger.error(f"Unexpected error retrieving details for organization ID {organization_id}: {str(e)}")
             return Response({"error": "Failed to retrieve organization details"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 ############### organization based details ends #######################################
 
@@ -2258,6 +2353,8 @@ class CreatePermissionsView(APIView):
                 {"error": "An unexpected error occurred.", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 ###################### create user permission ends ##############################################
 
 
@@ -2404,8 +2501,6 @@ class PasswordResetConfirmView(generics.UpdateAPIView):
 
 
 ########################## Password reset function ends ############################################
-
-
 
 
 ######################## API for DMS components starts ##################################
@@ -2613,7 +2708,7 @@ class S3Bucket:
 
             # Generate the public URL
             download_link = f"https://{bucket_name}.s3.amazonaws.com/{modified_filename}"
-            print("download_link",download_link)
+            print("download_link", download_link)
             return JsonResponse({
                 'file_id': file_id,
                 'file_name': modified_filename,
@@ -2650,7 +2745,7 @@ class FileUploadView(APIView):
     def post(self, request, *args, **kwargs):
 
         drive_type = request.data.get('drive_types')
-        print("drive_type",drive_type)
+        print("drive_type", drive_type)
 
         if drive_type == "S3 Bucket":
             bucket_name = request.data.get('bucket_name')
@@ -2695,6 +2790,5 @@ class FileUploadView(APIView):
         else:
             logger.error("Invalid drive_type")
             return Response({"error": "Invalid drive_type"}, status=status.HTTP_400_BAD_REQUEST)
-
 
 ######################## API for DMS components ends ##################################

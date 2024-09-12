@@ -38,7 +38,7 @@ class BotSchemaSerializer(serializers.ModelSerializer):
     # bot = BotSerializer()
     # bot = BotSerializer(read_only=True)
     bot_schema_json = JSONField()
-    flow_id = serializers.PrimaryKeyRelatedField(queryset=CreateProcess.objects.all())  # Add this line
+    flow_id = serializers.PrimaryKeyRelatedField(queryset=CreateProcess.objects.all(), allow_null=True, required=False)  # Add this line
 
     class Meta:
         model = BotSchema

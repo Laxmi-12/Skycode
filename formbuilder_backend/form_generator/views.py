@@ -54,9 +54,9 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import IntegrityError, transaction
 import logging  # log messages
 
-logger = logging.getLogger(__name__)
-
-
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger('form_generator')
+# logger = logging.getLogger('logger = logging.getLogger('form_generator')')
 class FormGeneratorAPIView(APIView):
     """
     1.1
@@ -993,6 +993,7 @@ class CaseRelatedFormView(APIView):
     def get(self, request, organization_id, process_id, pk=None):
         if pk is None:
             cases = Case.objects.filter(organization_id=organization_id, processId=process_id)
+            logger.info(" case: %s", cases)
             serializer = CaseSerializer(cases, many=True)
             serialized_data = serializer.data
 
@@ -1015,24 +1016,34 @@ class CaseRelatedFormView(APIView):
         else:
             try:
                 case = Case.objects.get(pk=pk, organization_id=organization_id, processId=process_id)
+                logger.info(" case: %s", case)
             except Case.DoesNotExist:
                 return Response({'error': 'Case not found'}, status=404)
 
             next_step = case.next_step
-            print("next_step", next_step)
+            logger.info(" next_step: %s", next_step)
+            print("next_steppppppppppppp", next_step)
 
             try:
                 form_json_schema = FormDataInfo.objects.get(Form_uid=next_step, organization=organization_id,
                                                             processId=process_id)
+                print("form_json_schema ",form_json_schema )
 
             except FormDataInfo.DoesNotExist:
                 form_json_schema = None
 
             try:
                 ocr_data = Ocr.objects.get(ocr_uid=next_step, organization=organization_id, flow_id=process_id)
-
+                logger.info("ocr_data: %s", ocr_data)
             except Ocr.DoesNotExist:
                 ocr_data = None
+            try:
+                rule_schema = Rule.objects.get(ruleId=next_step, organization=organization_id,
+                                                            processId=process_id)
+                return self.handle_case_step(request, pk)
+
+            except Rule.DoesNotExist:
+                rule_schema = None
 
             # Initialize response data with case information
             response_data = {
@@ -1046,8 +1057,9 @@ class CaseRelatedFormView(APIView):
 
             # Include OCR data if it exists
             if ocr_data:
-                ocr_data_list = Ocr.objects.filter(organization=organization_id, flow_id=process_id)
+                ocr_data_list = Ocr.objects.filter(ocr_uid=next_step,organization=organization_id, flow_id=process_id)
                 serializer = OcrSerializer(ocr_data_list, many=True)
+                logger.info("schemacccccccccccccccc %s",serializer.data[0])
                 response_data['ocr_schema'] = serializer.data[0]  # Assuming only one OCR schema is needed
 
 
@@ -1123,7 +1135,7 @@ class CaseRelatedFormView(APIView):
 
             # get next step 'start' and 'end' from participants json schema BGN
             cs_next_step = case.next_step
-            print("cs_next_step", cs_next_step)
+            logger.info("cs_next_step : %s", cs_next_step)
             process_data = CreateProcess.objects.get(pk=process_id.pk)
             participants_data = process_data.participants
             # parsed_data = json.loads(participants_data)
@@ -1625,9 +1637,10 @@ class CaseRelatedFormView(APIView):
                     # form_schema = get_object_or_404(FormDataInfo, Form_uid=form.Form_uid)
                     # integration_type = integration.integration_type
                     print('--- Activity starts --- ')
-
+                    logger.info("Activity starts")
                     # Convert the form UID to string
                     form_id_ref = str(form.Form_uid)
+                    logger.info("form_id_ref %s",form_id_ref)
                     print("form_id_ref:", form_id_ref)
 
                     # Attempt to retrieve the form JSON schema using the form UID
@@ -1799,6 +1812,9 @@ class CaseRelatedFormView(APIView):
                                 })
                                 print("next_step_id", next_step_id)
 
+
+
+
                                 # Update the case with the next step and save
                                 case_data = Case.objects.select_for_update().get(pk=case.id)
                                 case_data.data_json = json.dumps(
@@ -1811,7 +1827,9 @@ class CaseRelatedFormView(APIView):
                                 case_data.save()
 
                                 case_data.next_step = next_step_id  # Assuming next_step_id is determined elsewhere
+                                print("********************case_data.next_step ",case_data.next_step )
                                 case_data.save()
+
                                 if next_step_id.lower() == "null" or cs_next_step == "null":
                                     case_data.status = "Completed"
                                     case_data.save()
@@ -2039,7 +2057,7 @@ class CaseRelatedFormView(APIView):
                     try:
                         actions = evaluate_rules(rule_input_data, extracted_data)
                         # Print the actions to be taken
-                        print("Actions to be taken:", actions)
+                        logger.info("Actions to be taken:", actions)
                         final_flow_key = []
                         final_flow_start = []
                         if actions:
@@ -2115,10 +2133,10 @@ class CaseRelatedFormView(APIView):
                         # data_json_str = request.data['data_json']
                         print("data_json_str", data_json)
                         # Flatten the data_json structure
-                        flattened_data_json = {}
-                        for file_name, content_list in data_json.items():
-                            for index, item in enumerate(content_list, start=1):
-                                flattened_data_json[f"{file_name}_data_{index}"] = item
+                        # flattened_data_json = {}
+                        # for file_name, content_list in data_json.items():
+                        #     for index, item in enumerate(content_list, start=1):
+                        #         flattened_data_json[f"{file_name}_data_{index}"] = item
 
                         caseId = case.id  # Assuming case.id is available
 
@@ -2130,7 +2148,7 @@ class CaseRelatedFormView(APIView):
                             'ocr_uid': ocr_id_ref,
                             'flow_id': process_id,
                             'organization': organization_id,
-                            'data_schema': flattened_data_json,  # JSON list (need to change)
+                            'data_schema': data_json,  # JSON list (need to change)
                             'case_id': caseId,
                         }
 
@@ -2183,11 +2201,12 @@ class CaseRelatedFormView(APIView):
                     case_data.path_json = []
                 # Append next_step to path_json
                 case_data.path_json.append(case_data.next_step)
+                case_data.next_step = current_step_id
                 case_data.save()
 
                 # Check the end form id
                 print("next_step_id++++++++++++++++++++++++++++++", next_step_id)
-                if next_step_id.lower() == "null" or cs_next_step == "null":
+                if next_step_id.lower() == "null" or cs_next_step == "null" :
                     case_data.status = "Completed"
                     case_data.save()
                     responses.append(case_data.status)
@@ -2221,7 +2240,7 @@ class CaseRelatedFormView(APIView):
                     # break
                 # return Response({"message": "Form schema saved successfully"}, status=status.HTTP_201_CREATED)
 
-                return Response({"message": "Process executed successfully", "responses": responses},
+                return Response({"message": "Case completed successfully", "responses": responses},
                                 status=status.HTTP_200_OK)
         except Exception as e:
             responses.append({"error": f"Exception occurred while executing step {current_step_id}: {str(e)}"})
